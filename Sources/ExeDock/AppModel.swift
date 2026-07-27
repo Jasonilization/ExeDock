@@ -31,7 +31,15 @@ final class AppModel: ObservableObject {
         return false
     }
 
-    init() {
+    // Deliberately does nothing but set defaults above. Mutating @Published properties from inside
+    // an ObservableObject's own init() (which SwiftUI can invoke mid-render for a @StateObject) is a
+    // known trigger for "Publishing changes from within view updates is not allowed" - real symptoms
+    // observed here included whole panes of the UI going blank. All initial loading instead happens
+    // in `onSetupReady()`, called from an `.onChange`/`.onAppear`, safely outside any view's body.
+    init() {}
+
+    /// Called once launch-time setup finishes (see `SetupCoordinator`) - safe to publish freely here.
+    func onSetupReady() {
         isGameModeUnlocked = SteamInstaller.isSteamInstalled
         if isGameModeUnlocked { steamStatus = .installed }
         refreshBottlesAndApps()
@@ -44,12 +52,18 @@ final class AppModel: ObservableObject {
     }
 
     func run(exePath: String, bottle: Bottle) {
-        do {
-            let env = (isGameModeUnlocked && bottle.id == SteamInstaller.steamBottle.id) ? gameModeConfig.environment : [:]
-            try ExeRunner.run(exePath: exePath, in: bottle, extraEnvironment: env)
-            statusMessage = "Launched \((exePath as NSString).lastPathComponent)"
-        } catch {
-            errorMessage = error.localizedDescription
+        let env = (isGameModeUnlocked && bottle.id == SteamInstaller.steamBottle.id) ? gameModeConfig.environment : [:]
+        let name = (exePath as NSString).lastPathComponent
+        statusMessage = "Launching \(name)…"
+        // A bottle that isn't initialized yet can take a while (wineboot + a grace period for its
+        // background helper processes to finish) - never do that on the main thread.
+        Task.detached(priority: .userInitiated) { [weak self] in
+            do {
+                try ExeRunner.run(exePath: exePath, in: bottle, extraEnvironment: env)
+                await MainActor.run { [weak self] in self?.statusMessage = "Launched \(name)" }
+            } catch {
+                await MainActor.run { [weak self] in self?.errorMessage = error.localizedDescription }
+            }
         }
     }
 

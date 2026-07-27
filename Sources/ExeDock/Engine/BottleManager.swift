@@ -24,8 +24,16 @@ final class BottleManager {
         let fm = FileManager.default
         try fm.createDirectory(atPath: bottle.prefixPath, withIntermediateDirectories: true)
 
-        let alreadyInitialized = fm.fileExists(atPath: bottle.driveCPath)
-        guard !alreadyInitialized else { return }
+        // system.reg only appears once wineboot has actually finished - drive_c/dosdevices alone can
+        // exist from a wine invocation that started but crashed (e.g. missing shared libraries)
+        // before finishing, so checking for it alone would wrongly call a broken prefix "ready".
+        let systemRegPath = (bottle.prefixPath as NSString).appendingPathComponent("system.reg")
+        guard !fm.fileExists(atPath: systemRegPath) else { return }
+
+        try? fm.createDirectory(atPath: ExeRunner.logsDir, withIntermediateDirectories: true)
+        let logPath = (ExeRunner.logsDir as NSString).appendingPathComponent("wineboot-\(bottle.name)-\(Int(Date().timeIntervalSince1970)).log")
+        fm.createFile(atPath: logPath, contents: nil)
+        let logHandle = FileHandle(forWritingAtPath: logPath)
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: wineBinary)
@@ -33,12 +41,24 @@ final class BottleManager {
         var env = ProcessInfo.processInfo.environment
         env["WINEPREFIX"] = bottle.prefixPath
         env["WINEDEBUG"] = "-all"
+        for (key, value) in try SikarugirEngine.runtimeEnvironment() { env[key] = value }
         process.environment = env
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
+        process.standardOutput = logHandle
+        process.standardError = logHandle
         try process.run()
         process.waitUntilExit()
+
+        // wineboot can keep finishing registry setup via background helper processes (rundll32,
+        // services.exe, …) even after the process we launched exits, so give it a grace period
+        // rather than assuming completion the instant it returns.
+        let deadline = Date().addingTimeInterval(45)
+        while !fm.fileExists(atPath: systemRegPath), Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+
+        guard fm.fileExists(atPath: systemRegPath) else {
+            throw EngineError.extractionFailed("Wine's setup didn't finish in time. Details were saved to \(logPath).")
+        }
     }
 
     /// Discovers Sikarugir wrapper apps on disk (read-only) so their bottles can be browsed and their

@@ -126,8 +126,9 @@ private struct CDriveRow: View {
     var body: some View {
         Button(action: onActivate) {
             HStack {
-                Image(systemName: entry.isDirectory ? "folder.fill" : (entry.isExecutable ? "gearshape.fill" : "doc"))
-                    .foregroundStyle(entry.isDirectory ? Color.accentColor : (entry.isExecutable ? .green : .secondary))
+                Image(nsImage: AppIconProvider.icon(forPath: entry.path))
+                    .resizable()
+                    .frame(width: 20, height: 20)
                 Text(entry.name)
                 Spacer()
                 if entry.isExecutable {

@@ -6,8 +6,9 @@ struct AppRow: View {
 
     var body: some View {
         HStack {
-            Image(systemName: "app.badge")
-                .foregroundStyle(.secondary)
+            Image(nsImage: AppIconProvider.icon(for: app))
+                .resizable()
+                .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.displayName)
                 Text(app.exePath)

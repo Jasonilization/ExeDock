@@ -44,17 +44,21 @@ enum SteamInstaller {
         try FileManager.default.moveItem(at: tempURL, to: URL(fileURLWithPath: setupPath))
 
         progress("Installing Steam…")
-        let wineBinary = try SikarugirEngine.wineBinaryPath()
-        try BottleManager.shared.ensureInitialized(steamBottle, wineBinary: wineBinary)
+        let bottle = steamBottle
+        try await Task.detached(priority: .userInitiated) {
+            let wineBinary = try SikarugirEngine.wineBinaryPath()
+            try BottleManager.shared.ensureInitialized(bottle, wineBinary: wineBinary)
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: wineBinary)
-        process.arguments = [setupPath, "/S"]
-        var env = ProcessInfo.processInfo.environment
-        env["WINEPREFIX"] = steamBottle.prefixPath
-        process.environment = env
-        try process.run()
-        process.waitUntilExit()
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: wineBinary)
+            process.arguments = [setupPath, "/S"]
+            var env = ProcessInfo.processInfo.environment
+            env["WINEPREFIX"] = bottle.prefixPath
+            for (key, value) in try SikarugirEngine.runtimeEnvironment() { env[key] = value }
+            process.environment = env
+            try process.run()
+            process.waitUntilExit()
+        }.value
 
         // Steam's bootstrapper /S flag returns quickly while it keeps unpacking itself in the
         // background, so poll for Steam.exe rather than trusting the process exit code alone.

@@ -23,6 +23,7 @@ enum ExeRunner {
         process.arguments = [exePath]
         var env = ProcessInfo.processInfo.environment
         env["WINEPREFIX"] = bottle.prefixPath
+        for (key, value) in try SikarugirEngine.runtimeEnvironment() { env[key] = value }
         for (key, value) in extraEnvironment { env[key] = value }
         process.environment = env
         process.standardOutput = logHandle
