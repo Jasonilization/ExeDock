@@ -7,7 +7,6 @@ final class AppModel: ObservableObject {
         case library
         case cDrive
         case gameMode
-        case about
     }
 
     enum SteamStatus: Equatable {
@@ -175,5 +174,9 @@ final class AppModel: ObservableObject {
 
     func openSikarugirCreator() {
         NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/Sikarugir Creator.app"))
+    }
+
+    func openGitHub() {
+        NSWorkspace.shared.open(URL(string: "https://github.com/Jasonilization/ExeDock")!)
     }
 }

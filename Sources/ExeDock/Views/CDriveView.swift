@@ -68,8 +68,11 @@ struct CDriveView: View {
                     } onReveal: {
                         model.revealInFinder(entry.path)
                     }
+                    .fadeInOnAppear()
                 }
                 .listStyle(.inset)
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.2), value: entries)
             }
         }
         .onAppear {

@@ -9,6 +9,7 @@ struct AppRow: View {
             Image(nsImage: AppIconProvider.icon(for: app))
                 .resizable()
                 .frame(width: 32, height: 32)
+                .fadeInOnAppear()
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.displayName)
                 Text(app.exePath)

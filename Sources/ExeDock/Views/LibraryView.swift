@@ -32,19 +32,23 @@ struct LibraryView: View {
 
             if model.detectedApps.isEmpty {
                 emptyState
+                    .transition(.opacity)
             } else {
                 List {
                     ForEach(grouped, id: \.bottleName) { group in
                         Section(group.bottleName) {
                             ForEach(group.apps) { app in
                                 AppRow(app: app)
+                                    .fadeInOnAppear()
                             }
                         }
                     }
                 }
                 .listStyle(.inset)
+                .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.25), value: model.detectedApps)
     }
 
     private var emptyState: some View {

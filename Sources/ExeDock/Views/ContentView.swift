@@ -12,7 +12,6 @@ struct ContentView: View {
                 Label("Library", systemImage: "square.grid.2x2").tag(AppModel.SidebarSection.library)
                 Label("C: Drive", systemImage: "internaldrive").tag(AppModel.SidebarSection.cDrive)
                 Label("Game Mode", systemImage: "gamecontroller").tag(AppModel.SidebarSection.gameMode)
-                Label("About", systemImage: "info.circle").tag(AppModel.SidebarSection.about)
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 180)
         } detail: {
@@ -20,6 +19,8 @@ struct ContentView: View {
                 dropZone
                 Divider()
                 content
+                    .transition(.opacity.combined(with: .scale(scale: 0.99)))
+                    .animation(.easeInOut(duration: 0.22), value: model.selectedSection)
             }
             .toolbar {
                 ToolbarItemGroup {
@@ -34,6 +35,20 @@ struct ContentView: View {
                         Label("Install & Run Steam", systemImage: "gamecontroller.fill")
                     }
                     .disabled(model.isInstallingSteam)
+                    Button {
+                        model.openSikarugirCreator()
+                    } label: {
+                        Label("Sikarugir Creator", systemImage: "arrow.up.forward.app")
+                    }
+                    Button {
+                        model.openGitHub()
+                    } label: {
+                        Label {
+                            Text("GitHub")
+                        } icon: {
+                            GitHubMark().aspectRatio(contentMode: .fit).frame(width: 15, height: 15)
+                        }
+                    }
                 }
             }
         }
@@ -57,8 +72,6 @@ struct ContentView: View {
             CDriveView()
         case .gameMode:
             GameModeView()
-        case .about:
-            AboutView()
         }
     }
 
@@ -69,8 +82,10 @@ struct ContentView: View {
                 .foregroundStyle(isTargeted ? Color.accentColor : .secondary)
             Text(isTargeted ? "Drop to run" : "Drag an .exe here to run it")
                 .font(.callout)
+                .animation(.easeInOut(duration: 0.18), value: isTargeted)
             if let status = model.statusMessage {
                 Text(status).font(.footnote).foregroundStyle(.secondary)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
             if case .installing(let message) = model.steamStatus {
                 VStack(spacing: 4) {
@@ -80,8 +95,11 @@ struct ContentView: View {
                     Text(message).font(.footnote).foregroundStyle(.secondary)
                 }
                 .padding(.top, 2)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .animation(.easeInOut(duration: 0.25), value: model.statusMessage)
+        .animation(.easeInOut(duration: 0.25), value: model.steamStatus)
         .frame(maxWidth: .infinity)
         .padding(18)
         .background(isTargeted ? Color.accentColor.opacity(0.12) : Color.clear)

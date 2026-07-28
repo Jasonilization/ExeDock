@@ -25,13 +25,16 @@ struct GameModeView: View {
                             ProgressView().controlSize(.small)
                             Text("Looking for installed games…").foregroundStyle(.secondary)
                         }
+                        .transition(.opacity)
                     } else if model.steamGames.isEmpty {
                         Text("No installed games found yet. Install something from Steam, then refresh.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .transition(.opacity)
                     } else {
                         ForEach(model.steamGames) { game in
                             SteamGameRow(game: game)
+                                .fadeInOnAppear()
                         }
                     }
                 } header: {
@@ -86,8 +89,12 @@ struct GameModeView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.2), value: model.isSteamSessionRunning)
             }
             .formStyle(.grouped)
+            .animation(.easeInOut(duration: 0.25), value: model.isLoadingSteamGames)
+            .animation(.easeInOut(duration: 0.25), value: model.steamGames)
         }
     }
 
@@ -108,6 +115,7 @@ private struct SteamGameRow: View {
             Image(nsImage: AppIconProvider.icon(forPath: game.iconExePath ?? SteamInstaller.installedSteamExePath))
                 .resizable()
                 .frame(width: 28, height: 28)
+                .fadeInOnAppear()
             Text(game.name)
             Spacer()
             Button("Launch") {
