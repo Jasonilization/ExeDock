@@ -19,6 +19,35 @@ struct GameModeView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Form {
+                Section {
+                    if model.isLoadingSteamGames && model.steamGames.isEmpty {
+                        HStack {
+                            ProgressView().controlSize(.small)
+                            Text("Looking for installed games…").foregroundStyle(.secondary)
+                        }
+                    } else if model.steamGames.isEmpty {
+                        Text("No installed games found yet. Install something from Steam, then refresh.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(model.steamGames) { game in
+                            SteamGameRow(game: game)
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("Your Steam Games")
+                        Spacer()
+                        Button {
+                            model.refreshSteamGames()
+                        } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(model.isLoadingSteamGames)
+                    }
+                }
+
                 Section("Engine") {
                     Picker("Wine engine", selection: engineSelection) {
                         ForEach(SikarugirEngine.availableEngineNames(), id: \.self) { name in
@@ -46,6 +75,16 @@ struct GameModeView: View {
                     Button("Launch Steam") {
                         model.run(exePath: SteamInstaller.installedSteamExePath, bottle: SteamInstaller.steamBottle)
                     }
+                    .disabled(model.isSteamSessionRunning)
+
+                    if model.isSteamSessionRunning {
+                        Button("Force Quit Steam", role: .destructive) {
+                            model.forceQuit(bottle: SteamInstaller.steamBottle, displayName: "Steam")
+                        }
+                        Text("If a game is stuck launching, use this instead of Force Quitting ExeDock - it shuts the whole Wine session down cleanly instead of leaving background processes running.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -57,5 +96,24 @@ struct GameModeView: View {
             get: { model.gameModeConfig.engineName },
             set: { model.gameModeConfig.engineName = $0 }
         )
+    }
+}
+
+private struct SteamGameRow: View {
+    @EnvironmentObject private var model: AppModel
+    let game: SteamGame
+
+    var body: some View {
+        HStack {
+            Image(nsImage: AppIconProvider.icon(forPath: game.iconExePath ?? SteamInstaller.installedSteamExePath))
+                .resizable()
+                .frame(width: 28, height: 28)
+            Text(game.name)
+            Spacer()
+            Button("Launch") {
+                model.launchSteamGame(game)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }

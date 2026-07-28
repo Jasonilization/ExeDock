@@ -7,7 +7,6 @@ struct ExeDockApp: App {
             RootView()
                 .frame(minWidth: 860, minHeight: 580)
         }
-        .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
