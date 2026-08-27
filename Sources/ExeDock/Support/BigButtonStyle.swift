@@ -28,9 +28,9 @@ private struct BigButtonLabel: View {
                 in: RoundedRectangle(cornerRadius: 14)
             )
             .foregroundStyle(prominent ? Color.white : Color.primary)
-            .brightness(configuration.isPressed ? 0 : (isHovering ? 0.06 : 0))
-            .scaleEffect(configuration.isPressed ? 0.94 : (isHovering ? 1.02 : 1.0))
-            .offset(y: configuration.isPressed ? 3 : 0)
+            .brightness(configuration.isPressed ? 0 : (isHovering ? 0.04 : 0))
+            .scaleEffect(configuration.isPressed ? 0.98 : (isHovering ? 1.015 : 1.0))
+            .offset(y: configuration.isPressed ? 1 : 0)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
             .animation(.easeOut(duration: 0.15), value: isHovering)
             .onHover { isHovering = $0 }
