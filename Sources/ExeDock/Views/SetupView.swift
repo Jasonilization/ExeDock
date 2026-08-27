@@ -8,16 +8,16 @@ struct SetupView: View {
         VStack(spacing: 16) {
             Spacer()
             Image(systemName: iconName)
-                .font(.system(size: 40))
+                .font(.system(size: 52))
                 .foregroundStyle(iconColor)
             Text(title)
-                .font(.title3)
+                .font(.title2)
                 .bold()
             Text(subtitle)
-                .font(.callout)
+                .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 380)
+                .frame(maxWidth: 420)
             if showsSpinner {
                 Group {
                     if let fraction = progressFraction {

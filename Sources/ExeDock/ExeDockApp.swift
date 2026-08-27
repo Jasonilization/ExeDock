@@ -5,9 +5,11 @@ struct ExeDockApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .frame(minWidth: 860, minHeight: 580)
+                .frame(minWidth: 980, minHeight: 680)
+                // Cascades to every button/picker/toggle/text field in the app - one place to make
+                // controls bigger and easier to hit instead of tuning `.controlSize` per view.
+                .controlSize(.large)
         }
-        .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
         }

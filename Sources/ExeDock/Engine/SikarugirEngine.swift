@@ -23,8 +23,19 @@ enum EngineError: Error, LocalizedError {
 enum SikarugirEngine {
     static let sikarugirEnginesDir = ("~/Library/Application Support/Sikarugir/Engines" as NSString).expandingTildeInPath
     static let exeDockSupportDir = ("~/Library/Application Support/ExeDock" as NSString).expandingTildeInPath
-    static let extractedEngineDir = (exeDockSupportDir as NSString).appendingPathComponent("Engine")
+    /// Where a build of ExeDock before per-engine caching always extracted to - still checked first
+    /// so an existing install doesn't silently re-extract (and re-download nothing, but re-pay the
+    /// tar cost) something it already has ready to go.
+    static let legacyExtractedEngineDir = (exeDockSupportDir as NSString).appendingPathComponent("Engine")
     static let exeDockFrameworksDir = (exeDockSupportDir as NSString).appendingPathComponent("Frameworks")
+
+    /// Each named engine gets its own extraction cache (`Engine-<name>`) so ExeDock can hold more
+    /// than one ready at once - needed both for the engine picker (switching without re-extracting
+    /// every time) and for the launch fallback ladder trying an alternate engine after a failure.
+    static func extractedEngineDir(named engineName: String) -> String {
+        let safeName = engineName.replacingOccurrences(of: "/", with: "-")
+        return (exeDockSupportDir as NSString).appendingPathComponent("Engine-\(safeName)")
+    }
 
     // Setup can be triggered from more than one place at once (the launch-time SetupCoordinator
     // preparing the Default bottle while the user clicks Install & Run Steam for the Steam bottle).
@@ -33,38 +44,73 @@ enum SikarugirEngine {
     // which is exactly what produced a wineboot failure logged with the Steam bottle previously.
     private static let prepLock = NSLock()
 
-    /// Path to the `wine` binary ExeDock should use to launch executables.
-    static func wineBinaryPath() throws -> String {
+    /// Path to the `wine` binary ExeDock should use to launch executables. Pass a specific
+    /// `engineName` (one of `availableEngineNames()`) to use that engine; leave it `nil` to get
+    /// whatever's already cached, or the recommended engine if nothing's cached yet.
+    static func wineBinaryPath(engineName: String? = nil) throws -> String {
         prepLock.lock()
         defer { prepLock.unlock() }
         let fm = FileManager.default
-
-        let cachedWine = (extractedEngineDir as NSString).appendingPathComponent("bin/wine")
-        if fm.isExecutableFile(atPath: cachedWine) {
-            return cachedWine
+        let dir = try engineDirectory(engineName: engineName, extractIfNeeded: true)
+        let wine = (dir as NSString).appendingPathComponent("bin/wine")
+        if fm.isExecutableFile(atPath: wine) {
+            return wine
         }
-
-        if let tarball = try? findSikarugirEngineTarball() {
-            try extractEngine(tarball: tarball)
-            if fm.isExecutableFile(atPath: cachedWine) {
-                return cachedWine
-            }
-        }
-
         if let wrapperWine = try? findWrapperWineBinary() {
             return wrapperWine
         }
-
         throw EngineError.noEngineFound
     }
 
-    /// Names of every Wine engine Sikarugir has already downloaded (for the Game Mode engine picker).
+    /// Picks (and, if `extractIfNeeded`, extracts) the directory a given engine request resolves
+    /// to. Both `wineBinaryPath` and `runtimeEnvironment` go through this so they can never disagree
+    /// about which engine a launch actually used - callers must already hold `prepLock`.
+    private static func engineDirectory(engineName: String?, extractIfNeeded: Bool) throws -> String {
+        let fm = FileManager.default
+
+        // No specific engine requested and something's already extracted (from this build or an
+        // older one) - the cheap, common-case path.
+        if engineName == nil {
+            let legacyWine = (legacyExtractedEngineDir as NSString).appendingPathComponent("bin/wine")
+            if fm.isExecutableFile(atPath: legacyWine) {
+                return legacyExtractedEngineDir
+            }
+        }
+
+        if let chosenName = engineName ?? recommendedEngineName() {
+            let dir = extractedEngineDir(named: chosenName)
+            let cachedWine = (dir as NSString).appendingPathComponent("bin/wine")
+            if fm.isExecutableFile(atPath: cachedWine) {
+                return dir
+            }
+            if extractIfNeeded, let tarballPath = tarballPath(for: chosenName) {
+                try extractEngine(tarball: tarballPath, into: dir)
+                if fm.isExecutableFile(atPath: cachedWine) {
+                    return dir
+                }
+            }
+        }
+
+        return legacyExtractedEngineDir
+    }
+
+    /// Names of every Wine engine Sikarugir has already downloaded (for the Game Mode engine
+    /// picker), newest-looking first - the same folder Sikarugir Creator itself downloads into, so
+    /// this list can never drift from what Sikarugir Creator shows.
     static func availableEngineNames() -> [String] {
         let fm = FileManager.default
         guard let items = try? fm.contentsOfDirectory(atPath: sikarugirEnginesDir) else { return [] }
         return items.filter { $0.hasSuffix(".tar.xz") }
             .map { $0.replacingOccurrences(of: ".tar.xz", with: "") }
-            .sorted()
+            .sorted { $0.localizedStandardCompare($1) == .orderedDescending }
+    }
+
+    /// The engine ExeDock suggests by default: prefers the in-house "Sikarugir" build over a
+    /// third-party CX one, and among same-family names prefers the highest version (natural/numeric
+    /// sort, so "Sikarugir-10.0" ranks above "Sikarugir-9.0" rather than sorting as text).
+    static func recommendedEngineName() -> String? {
+        let names = availableEngineNames() // already newest-first
+        return names.first { $0.localizedCaseInsensitiveContains("sikarugir") } ?? names.first
     }
 
     /// True if Sikarugir Creator has already downloaded at least one engine tarball - a purely
@@ -89,9 +135,12 @@ enum SikarugirEngine {
     /// of it. Sikarugir Creator bundles those into every wrapper app's own Contents/Frameworks at
     /// wrapper-creation time instead, so ExeDock copies (read-only source, never edits) that same
     /// payload from an existing wrapper app once, and points DYLD_FALLBACK_LIBRARY_PATH at it.
-    static func runtimeEnvironment() throws -> [String: String] {
+    static func runtimeEnvironment(engineName: String? = nil) throws -> [String: String] {
         let frameworks = try ensureFrameworksAvailable()
-        let engineLib = (extractedEngineDir as NSString).appendingPathComponent("lib")
+        prepLock.lock()
+        let dir = (try? engineDirectory(engineName: engineName, extractIfNeeded: false)) ?? legacyExtractedEngineDir
+        prepLock.unlock()
+        let engineLib = (dir as NSString).appendingPathComponent("lib")
         return ["DYLD_FALLBACK_LIBRARY_PATH": "\(frameworks):\(engineLib)"]
     }
 
@@ -145,19 +194,14 @@ enum SikarugirEngine {
         throw EngineError.missingSharedLibraries
     }
 
-    private static func findSikarugirEngineTarball() throws -> String {
-        let fm = FileManager.default
-        guard let items = try? fm.contentsOfDirectory(atPath: sikarugirEnginesDir) else {
-            throw EngineError.noEngineFound
-        }
-        let tarballs = items.filter { $0.hasSuffix(".tar.xz") }
-        // Prefer the in-house "Sikarugir" engine over a third-party CX build.
-        let preferred = tarballs.first { $0.localizedCaseInsensitiveContains("sikarugir") } ?? tarballs.first
-        guard let chosen = preferred else { throw EngineError.noEngineFound }
-        return (sikarugirEnginesDir as NSString).appendingPathComponent(chosen)
+    /// Path to a specific engine's tarball on disk, if Sikarugir Creator has downloaded one by that
+    /// exact name (as returned by `availableEngineNames()`).
+    private static func tarballPath(for engineName: String) -> String? {
+        let candidate = (sikarugirEnginesDir as NSString).appendingPathComponent("\(engineName).tar.xz")
+        return FileManager.default.fileExists(atPath: candidate) ? candidate : nil
     }
 
-    private static func extractEngine(tarball: String) throws {
+    private static func extractEngine(tarball: String, into destinationDir: String) throws {
         let fm = FileManager.default
         try? fm.createDirectory(atPath: exeDockSupportDir, withIntermediateDirectories: true)
 
@@ -192,8 +236,8 @@ enum SikarugirEngine {
             }
         }
 
-        try? fm.removeItem(atPath: extractedEngineDir)
-        try fm.moveItem(atPath: sourceDir, toPath: extractedEngineDir)
+        try? fm.removeItem(atPath: destinationDir)
+        try fm.moveItem(atPath: sourceDir, toPath: destinationDir)
         try? fm.removeItem(atPath: stagingDir)
     }
 

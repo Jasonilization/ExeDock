@@ -5,8 +5,8 @@ enum ExeRunner {
     static let logsDir = ("~/Library/Logs/ExeDock" as NSString).expandingTildeInPath
 
     @discardableResult
-    static func run(exePath: String, in bottle: Bottle, extraEnvironment: [String: String] = [:]) throws -> Process {
-        let wineBinary = try SikarugirEngine.wineBinaryPath()
+    static func run(exePath: String, in bottle: Bottle, arguments: [String] = [], extraEnvironment: [String: String] = [:], engineName: String? = nil) throws -> Process {
+        let wineBinary = try SikarugirEngine.wineBinaryPath(engineName: engineName)
         if !bottle.isReadOnly {
             try BottleManager.shared.ensureInitialized(bottle, wineBinary: wineBinary)
         }
@@ -20,10 +20,10 @@ enum ExeRunner {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: wineBinary)
-        process.arguments = [exePath]
+        process.arguments = [exePath] + arguments
         var env = ProcessInfo.processInfo.environment
         env["WINEPREFIX"] = bottle.prefixPath
-        for (key, value) in try SikarugirEngine.runtimeEnvironment() { env[key] = value }
+        for (key, value) in try SikarugirEngine.runtimeEnvironment(engineName: engineName) { env[key] = value }
         for (key, value) in extraEnvironment { env[key] = value }
         process.environment = env
         process.standardOutput = logHandle

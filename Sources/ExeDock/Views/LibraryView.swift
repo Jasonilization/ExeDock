@@ -17,18 +17,21 @@ struct LibraryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                Image(systemName: "magnifyingglass")
+                    .imageScale(.large)
+                    .foregroundStyle(.secondary)
                 TextField("Search your apps", text: $search)
                     .textFieldStyle(.plain)
+                    .font(.title3)
                 Spacer()
                 Button {
                     model.refreshBottlesAndApps()
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.bordered)
             }
-            .padding(12)
+            .padding(16)
 
             if model.detectedApps.isEmpty {
                 emptyState
@@ -43,19 +46,21 @@ struct LibraryView: View {
                     }
                 }
                 .listStyle(.inset)
+                .environment(\.defaultMinListRowHeight, 52)
             }
         }
     }
 
     private var emptyState: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             Image(systemName: "square.grid.2x2")
-                .font(.system(size: 32))
+                .font(.system(size: 44))
                 .foregroundStyle(.tertiary)
             Text("No apps found yet")
-                .font(.headline)
+                .font(.title2)
+                .bold()
             Text("Drag an .exe above, or install something into a bottle - it'll show up here.")
-                .font(.subheadline)
+                .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
