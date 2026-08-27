@@ -3,6 +3,10 @@ import AppKit
 
 enum SetupStage: Equatable {
     case checking
+    /// More than one engine is downloaded and none is extracted yet - genuinely ambiguous, so
+    /// setup pauses here for the user to pick (see `SetupCoordinator.chooseEngine(_:)`) instead of
+    /// silently guessing. `recommended` is pre-highlighted in the UI.
+    case choosingEngine(options: [String], recommended: String?)
     case extractingEngine
     case initializingBottle
     case waitingForSikarugirCreator
@@ -31,25 +35,32 @@ final class SetupCoordinator: ObservableObject {
         pollTask = Task { await performSetup() }
     }
 
+    /// Called from the setup screen when more than one engine was offered and the user picked one.
+    func chooseEngine(_ name: String) {
+        pollTask?.cancel()
+        pollTask = Task { await extractAndContinue(engineName: name) }
+    }
+
     private func performSetup() async {
         stage = .checking
 
-        // Already fully set up, or just needs its cheap cached path? (Runs off the main thread
-        // since this can shell out to `tar` the first time.)
-        if await engineIsAvailable() {
+        // A cheap, side-effect-free check - safe to do first no matter how many engines are
+        // downloaded, since it never triggers an extraction the user hasn't chosen yet.
+        if SikarugirEngine.hasReadyCachedEngine() {
             await ensureDefaultBottleReady()
             return
         }
 
-        // Sikarugir already downloaded an engine tarball - extracting it is a local copy, no
-        // network involved, so ExeDock can just do this for you.
+        // Sikarugir already downloaded at least one engine tarball - extracting it is a local copy,
+        // no network involved, so ExeDock can just do this for you. If it downloaded more than one,
+        // that's a real choice worth asking about rather than silently guessing.
         if SikarugirEngine.hasDownloadedTarball() {
-            stage = .extractingEngine
-            if await engineIsAvailable() {
-                await ensureDefaultBottleReady()
-            } else {
-                stage = .failed("Found a Sikarugir engine but couldn't prepare it. Try relaunching ExeDock.")
+            let names = SikarugirEngine.availableEngineNames()
+            if names.count > 1 {
+                stage = .choosingEngine(options: names, recommended: SikarugirEngine.recommendedEngineName())
+                return
             }
+            await extractAndContinue(engineName: names.first)
             return
         }
 
@@ -68,11 +79,11 @@ final class SetupCoordinator: ObservableObject {
     private func pollForEngine() async {
         while !Task.isCancelled {
             if SikarugirEngine.hasDownloadedTarball() {
-                stage = .extractingEngine
-                if await engineIsAvailable() {
-                    await ensureDefaultBottleReady()
+                let names = SikarugirEngine.availableEngineNames()
+                if names.count > 1 {
+                    stage = .choosingEngine(options: names, recommended: SikarugirEngine.recommendedEngineName())
                 } else {
-                    stage = .failed("Found a Sikarugir engine but couldn't prepare it. Try relaunching ExeDock.")
+                    await extractAndContinue(engineName: names.first)
                 }
                 return
             }
@@ -80,24 +91,31 @@ final class SetupCoordinator: ObservableObject {
         }
     }
 
-    private func ensureDefaultBottleReady() async {
+    private func extractAndContinue(engineName: String?) async {
+        stage = .extractingEngine
+        let resolved = await Task.detached(priority: .userInitiated) {
+            try? SikarugirEngine.wineBinaryPath(engineName: engineName)
+        }.value
+        guard resolved != nil else {
+            stage = .failed("Found a Sikarugir engine but couldn't prepare it. Try relaunching ExeDock.")
+            return
+        }
+        // Pass the same name along so the bottle is initialized with the exact engine that was
+        // just extracted, not whatever `wineBinaryPath()` would pick again on its own.
+        await ensureDefaultBottleReady(engineName: engineName)
+    }
+
+    private func ensureDefaultBottleReady(engineName: String? = nil) async {
         stage = .initializingBottle
         let bottle = BottleManager.shared.defaultBottle
         do {
             try await Task.detached(priority: .userInitiated) {
-                let wine = try SikarugirEngine.wineBinaryPath()
+                let wine = try SikarugirEngine.wineBinaryPath(engineName: engineName)
                 try BottleManager.shared.ensureInitialized(bottle, wineBinary: wine)
             }.value
             stage = .ready
         } catch {
             stage = .failed(error.localizedDescription)
         }
-    }
-
-    /// Offloads the (possibly slow, shells-out-to-`tar`) engine resolution off the main thread.
-    private func engineIsAvailable() async -> Bool {
-        await Task.detached(priority: .userInitiated) {
-            SikarugirEngine.isEngineAvailable()
-        }.value
     }
 }

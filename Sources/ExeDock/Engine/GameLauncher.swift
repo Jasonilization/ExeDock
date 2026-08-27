@@ -52,19 +52,19 @@ enum GameLauncher {
     /// True if `process` exited with a non-zero status within `grace` seconds - i.e. it failed fast
     /// rather than actually starting. A process still running past the grace period (or one that
     /// exited 0 quickly, e.g. Steam.exe handing off to an already-running client) counts as success.
+    ///
+    /// Polls `isRunning` on a short interval instead of calling the blocking `waitUntilExit()` -
+    /// a launched game can keep running for hours, and blocking on that would pin one of Swift's
+    /// small, fixed pool of cooperative threads for the entire session instead of returning once the
+    /// grace period is up.
     static func failedQuickly(_ process: Process, grace: TimeInterval = 4) async -> Bool {
-        await withTaskGroup(of: Bool?.self) { group in
-            group.addTask {
-                process.waitUntilExit()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(grace))
+        while ContinuousClock.now < deadline {
+            if !process.isRunning {
                 return process.terminationStatus != 0
             }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: UInt64(grace * 1_000_000_000))
-                return nil
-            }
-            let result = await group.next() ?? nil
-            group.cancelAll()
-            return result ?? false
+            try? await Task.sleep(for: .milliseconds(200))
         }
+        return false
     }
 }

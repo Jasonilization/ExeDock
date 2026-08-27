@@ -101,7 +101,7 @@ struct GameModeView: View {
 
     private var profileAvatar: some View {
         Group {
-            if let avatarPath = model.steamProfile?.avatarPath, let image = NSImage(contentsOfFile: avatarPath) {
+            if let avatarPath = model.steamProfile?.avatarPath, let image = LocalImageCache.image(atPath: avatarPath) {
                 Image(nsImage: image).resizable()
             } else {
                 Image(systemName: "person.crop.circle.fill")
@@ -233,7 +233,7 @@ private struct GameCardView: View {
 
     private var artwork: some View {
         Group {
-            if let headerPath = storeInfo?.headerImagePath, let image = NSImage(contentsOfFile: headerPath) {
+            if let headerPath = storeInfo?.headerImagePath, let image = LocalImageCache.image(atPath: headerPath) {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)

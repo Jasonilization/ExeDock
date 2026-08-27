@@ -129,6 +129,21 @@ enum SikarugirEngine {
         (try? wineBinaryPath()) != nil
     }
 
+    /// True if some engine is already extracted and ready to use - unlike `isEngineAvailable()`,
+    /// this never extracts anything as a side effect. Used by setup to decide whether it's safe to
+    /// silently proceed, or whether (on a genuinely fresh install with more than one engine
+    /// downloaded) it should ask the user which one to use before auto-picking one for them.
+    static func hasReadyCachedEngine() -> Bool {
+        let fm = FileManager.default
+        let legacyWine = (legacyExtractedEngineDir as NSString).appendingPathComponent("bin/wine")
+        if fm.isExecutableFile(atPath: legacyWine) {
+            return true
+        }
+        return availableEngineNames().contains { name in
+            fm.isExecutableFile(atPath: (extractedEngineDir(named: name) as NSString).appendingPathComponent("bin/wine"))
+        }
+    }
+
     /// Environment variables that must be set on every wine/wineserver/wineboot process ExeDock
     /// launches. The engine tarball only contains wine's own binaries - the ~50 shared macOS
     /// libraries wine needs at runtime (libinotify, libgnutls, GStreamer, MoltenVK, …) are NOT part
