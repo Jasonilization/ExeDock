@@ -31,6 +31,10 @@ final class AppModel: ObservableObject {
     @Published var steamGames: [SteamGame] = []
     @Published var isLoadingSteamGames = false
     @Published var steamProfile: SteamProfile?
+    /// True while a Steam/game launch is in flight - drives the loading banner and disables launch
+    /// buttons so an impatient double-click can't start a second, competing Steam process (see
+    /// `launchSteam`).
+    @Published var isLaunchingSteam = false
 
     var isInstallingSteam: Bool {
         if case .installing = steamStatus { return true }
@@ -122,62 +126,63 @@ final class AppModel: ObservableObject {
 
     /// Games are always started through Steam itself (`-applaunch <appid>`) rather than by running
     /// their executable directly - see `SteamGame.iconExePath` for why. Uses that game's own
-    /// settings override if it has one (see `GameLauncher`), retrying with fallback settings if the
-    /// first attempt fails fast.
+    /// settings override if it has one.
     func launchSteamGame(_ game: SteamGame) {
-        launchWithFallback(
-            exePath: SteamInstaller.installedSteamExePath,
-            bottle: SteamInstaller.steamBottle,
-            arguments: ["-applaunch", game.appID],
-            displayName: game.name,
-            baseConfig: config(for: game)
-        )
+        guard ensureSteamStillInstalled() else { return }
+        launchSteam(arguments: ["-applaunch", game.appID], displayName: game.name, config: config(for: game))
     }
 
     /// Opens the Steam client itself (no specific game) - e.g. to browse the store or install
-    /// something new. Also goes through the fallback ladder, since this is the same call that has
-    /// to succeed before any per-game launch can.
+    /// something new.
     func openSteamClient() {
-        launchWithFallback(
-            exePath: SteamInstaller.installedSteamExePath,
-            bottle: SteamInstaller.steamBottle,
-            arguments: [],
-            displayName: "Steam",
-            baseConfig: gameModeConfig
-        )
+        guard ensureSteamStillInstalled() else { return }
+        launchSteam(arguments: [], displayName: "Steam", config: gameModeConfig)
     }
 
-    private func launchWithFallback(exePath: String, bottle: Bottle, arguments: [String], displayName: String, baseConfig: GameModeConfig) {
-        let attempts = GameLauncher.ladder(from: baseConfig)
+    /// Steam can vanish out from under ExeDock (uninstalled, a broken update) without anything else
+    /// noticing, since nothing polls for it while the app just sits open. Re-check right before
+    /// trying to launch it, and if it's gone, flip back to the locked state and kick off a reinstall
+    /// automatically - `SteamInstaller.installAndLaunch` already knows to skip the download step if
+    /// it turns out Steam actually is there after all.
+    @discardableResult
+    private func ensureSteamStillInstalled() -> Bool {
+        guard SteamInstaller.isSteamInstalled else {
+            isGameModeUnlocked = false
+            steamStatus = .notInstalled
+            errorMessage = "Steam isn't where ExeDock expected it anymore - reinstalling…"
+            installAndRunSteam()
+            return false
+        }
+        return true
+    }
+
+    /// A single, fire-and-forget launch - deliberately NOT retried. Steam.exe's own singleton
+    /// behavior means a second invocation while Steam is already running (or still starting up) just
+    /// messages the existing process and exits quickly, often with a non-zero status - that's normal,
+    /// not a failure, and retrying with different settings on that signal previously caused ExeDock
+    /// to launch a second, competing Steam process on top of a first one that was still legitimately
+    /// starting up (confirmed in ~/Library/Logs/ExeDock: two full Steam startups five seconds apart).
+    /// The `guard` below is a second line of defense against that - it ignores a launch request while
+    /// one is already in flight, on top of the UI disabling launch buttons for the same reason.
+    private func launchSteam(arguments: [String], displayName: String, config: GameModeConfig) {
+        guard !isLaunchingSteam else { return }
+        isLaunchingSteam = true
         statusMessage = "Launching \(displayName)…"
         Task.detached(priority: .userInitiated) { [weak self] in
-            for (index, attempt) in attempts.enumerated() {
-                let isLast = index == attempts.count - 1
-                do {
-                    let process = try ExeRunner.run(
-                        exePath: exePath, in: bottle, arguments: arguments,
-                        extraEnvironment: attempt.config.environment, engineName: attempt.config.engineName
-                    )
-                    if await !GameLauncher.failedQuickly(process) {
-                        await MainActor.run { [weak self] in self?.statusMessage = "Launched \(displayName)" }
-                        return
-                    }
-                } catch {
-                    if isLast {
-                        await MainActor.run { [weak self] in self?.errorMessage = error.localizedDescription }
-                        return
-                    }
-                }
-                if !isLast {
-                    let nextLabel = attempts[index + 1].label
-                    await MainActor.run { [weak self] in
-                        self?.statusMessage = "\(displayName) didn't start - trying \(nextLabel)…"
-                    }
-                }
+            do {
+                try ExeRunner.run(
+                    exePath: SteamInstaller.installedSteamExePath, in: SteamInstaller.steamBottle,
+                    arguments: arguments, extraEnvironment: config.environment, engineName: config.engineName
+                )
+                await MainActor.run { [weak self] in self?.statusMessage = "Launched \(displayName)" }
+            } catch {
+                await MainActor.run { [weak self] in self?.errorMessage = error.localizedDescription }
             }
-            await MainActor.run { [weak self] in
-                self?.errorMessage = "\(displayName) didn't start after trying a few different settings. Check ~/Library/Logs/ExeDock, or fine-tune its settings in Advanced Mode."
-            }
+            // Steam's own window can take a while to appear even after the process starts (first
+            // launch, or a self-update - real startups seen taking 10+ seconds) - keep the "in
+            // progress" indicator up for a bit so it doesn't flash by before anyone notices it.
+            try? await Task.sleep(for: .seconds(6))
+            await MainActor.run { [weak self] in self?.isLaunchingSteam = false }
         }
     }
 

@@ -47,6 +47,8 @@ struct SetupView: View {
                 Button("Check Again") {
                     setup.runSetup()
                 }
+                .font(.headline)
+                .padding(.vertical, 4)
                 .buttonStyle(.borderedProminent)
                 .padding(.top, 4)
             }

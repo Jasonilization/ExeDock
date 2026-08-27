@@ -36,6 +36,8 @@ struct AppRow: View {
             Button("Run") {
                 model.run(exePath: app.exePath, bottle: app.bottle)
             }
+            .font(.headline)
+            .padding(.vertical, 4)
             .buttonStyle(.borderedProminent)
         }
         .padding(.vertical, 6)

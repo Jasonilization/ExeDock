@@ -24,7 +24,7 @@ struct GameModeView: View {
     private var lockedState: some View {
         VStack(spacing: 20) {
             if model.isInstallingSteam {
-                GameModeLoadingView(message: installingMessage)
+                LoadingDotsView(message: installingMessage)
             } else {
                 Image(systemName: "gamecontroller")
                     .font(.system(size: 48))
@@ -34,6 +34,8 @@ struct GameModeView: View {
                 Button("Install & Run Steam") {
                     model.installAndRunSteam()
                 }
+                .font(.headline)
+                .padding(.vertical, 4)
                 .buttonStyle(.borderedProminent)
             }
         }
@@ -50,6 +52,9 @@ struct GameModeView: View {
     private var dashboard: some View {
         VStack(spacing: 0) {
             header
+            if model.isLaunchingSteam {
+                launchingBanner
+            }
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
@@ -59,9 +64,28 @@ struct GameModeView: View {
                 .padding(24)
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: model.isLaunchingSteam)
         .sheet(isPresented: $showingSettingsSheet) {
             DefaultSettingsSheet(isAdvancedMode: $isAdvancedMode)
         }
+    }
+
+    /// Steam's own window can take several seconds to actually appear (first launch, or it's
+    /// self-updating) even once ExeDock has successfully started it - without this, clicking Launch
+    /// looked like it did nothing. Stays up briefly after the process starts (see
+    /// `AppModel.launchSteam`), and disables every launch button meanwhile so a second click can't
+    /// start a competing Steam process.
+    private var launchingBanner: some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text(model.statusMessage ?? "Launching…")
+                .font(.callout)
+            Spacer()
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+        .background(Color.accentColor.opacity(0.12))
+        .transition(.opacity)
     }
 
     private var header: some View {
@@ -91,10 +115,22 @@ struct GameModeView: View {
             }
             .buttonStyle(.bordered)
 
-            Button("Open Steam") {
+            Button {
                 model.openSteamClient()
+            } label: {
+                if model.isLaunchingSteam {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Launching…")
+                    }
+                } else {
+                    Text("Open Steam")
+                }
             }
+            .font(.headline)
+            .padding(.vertical, 4)
             .buttonStyle(.borderedProminent)
+            .disabled(model.isLaunchingSteam)
         }
         .padding(18)
     }
@@ -124,10 +160,16 @@ struct GameModeView: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
     }
 
+    private let gridColumns = [GridItem(.adaptive(minimum: 220, maximum: 260), spacing: 18)]
+
     @ViewBuilder
     private var gamesGrid: some View {
         if model.isLoadingSteamGames && model.steamGames.isEmpty {
-            GameModeLoadingView(message: "Looking for installed games…")
+            // Shimmering placeholders in the exact grid the real cards will land in - reads as a
+            // proper dashboard loading in, not just "something, somewhere, is thinking."
+            LazyVGrid(columns: gridColumns, spacing: 18) {
+                ForEach(0..<6, id: \.self) { _ in GameCardSkeleton() }
+            }
         } else if model.steamGames.isEmpty {
             emptyGamesState
         } else if filteredGames.isEmpty {
@@ -137,7 +179,7 @@ struct GameModeView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 40)
         } else {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 260), spacing: 18)], spacing: 18) {
+            LazyVGrid(columns: gridColumns, spacing: 18) {
                 ForEach(filteredGames) { game in
                     GameCardView(game: game, isAdvancedMode: isAdvancedMode)
                 }
@@ -188,7 +230,8 @@ private struct GameCardView: View {
                         } label: {
                             Image(systemName: hasCustomSettings ? "slider.horizontal.3" : "gearshape")
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.bordered)
+                        .clipShape(Circle())
                         .help(hasCustomSettings ? "Custom settings" : "Game settings")
                         .popover(isPresented: $showingSettings) {
                             GameSettingsPopover(game: game)
@@ -202,11 +245,24 @@ private struct GameCardView: View {
                         .lineLimit(2)
                 }
                 detailsRow
-                Button("Launch") {
+                Button {
                     model.launchSteamGame(game)
+                } label: {
+                    if model.isLaunchingSteam {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Launching…")
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Launch")
+                            .frame(maxWidth: .infinity)
+                    }
                 }
+                .font(.headline)
+                .padding(.vertical, 4)
                 .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity)
+                .disabled(model.isLaunchingSteam)
                 .padding(.top, 2)
             }
             .padding(12)
@@ -354,31 +410,27 @@ private struct GameSettingsPopover: View {
 
 // MARK: - Loading
 
-/// A game-themed loading indicator for Game Mode: a controller icon that gently pulses inside a
-/// spinning progress ring, used both while ExeDock installs Steam and while it scans the Steam
-/// bottle for installed games - a plain spinner felt out of place in a section all about games.
-private struct GameModeLoadingView: View {
+/// A simple three-dot bounce, the same shape as most chat/loading indicators - used wherever Game
+/// Mode has no content shape to show a skeleton of yet (installing Steam itself).
+private struct LoadingDotsView: View {
     let message: String
     @LocalState private var isAnimating = false
 
     var body: some View {
-        VStack(spacing: 18) {
-            ZStack {
-                Circle()
-                    .stroke(Color.accentColor.opacity(0.15), lineWidth: 6)
-                    .frame(width: 72, height: 72)
-                Circle()
-                    .trim(from: 0, to: 0.26)
-                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                    .frame(width: 72, height: 72)
-                    .rotationEffect(.degrees(isAnimating ? 360 : 0))
-                    .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: isAnimating)
-                Image(systemName: "gamecontroller.fill")
-                    .font(.system(size: 26))
-                    .foregroundStyle(Color.accentColor)
-                    .scaleEffect(isAnimating ? 1.1 : 0.9)
-                    .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: isAnimating)
+        VStack(spacing: 16) {
+            HStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { index in
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 12, height: 12)
+                        .offset(y: isAnimating ? -8 : 0)
+                        .animation(
+                            .easeInOut(duration: 0.5).repeatForever(autoreverses: true).delay(Double(index) * 0.15),
+                            value: isAnimating
+                        )
+                }
             }
+            .frame(height: 24)
             Text(message)
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -386,5 +438,35 @@ private struct GameModeLoadingView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
         .onAppear { isAnimating = true }
+    }
+}
+
+/// A shimmering stand-in for a `GameCardView`, shown in the same grid the real cards land in while
+/// the Steam library scan is still running.
+private struct GameCardSkeleton: View {
+    @LocalState private var isShimmering = false
+
+    private var shimmerColor: Color {
+        Color.secondary.opacity(isShimmering ? 0.22 : 0.1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle().fill(shimmerColor).frame(height: 100)
+            VStack(alignment: .leading, spacing: 8) {
+                RoundedRectangle(cornerRadius: 4).fill(shimmerColor).frame(width: 130, height: 16)
+                RoundedRectangle(cornerRadius: 4).fill(shimmerColor).frame(height: 10)
+                RoundedRectangle(cornerRadius: 4).fill(shimmerColor).frame(width: 90, height: 10)
+                RoundedRectangle(cornerRadius: 8).fill(shimmerColor).frame(height: 34).padding(.top, 4)
+            }
+            .padding(12)
+        }
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary))
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                isShimmering = true
+            }
+        }
     }
 }
