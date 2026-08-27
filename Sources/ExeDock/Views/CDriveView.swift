@@ -36,15 +36,15 @@ struct CDriveView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.bordered)
                 Button {
                     if !currentFolder.isEmpty { model.revealInFinder(currentFolder) }
                 } label: {
                     Label("Open in Finder", systemImage: "arrow.up.forward.app")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.bordered)
             }
-            .padding(12)
+            .padding(16)
 
             breadcrumb
             Divider()
@@ -70,6 +70,7 @@ struct CDriveView: View {
                     }
                 }
                 .listStyle(.inset)
+                .environment(\.defaultMinListRowHeight, 44)
             }
         }
         .onAppear {
@@ -125,14 +126,15 @@ private struct CDriveRow: View {
 
     var body: some View {
         Button(action: onActivate) {
-            HStack {
+            HStack(spacing: 10) {
                 Image(nsImage: AppIconProvider.icon(forPath: entry.path))
                     .resizable()
-                    .frame(width: 20, height: 20)
+                    .frame(width: 26, height: 26)
                 Text(entry.name)
+                    .font(.body)
                 Spacer()
                 if entry.isExecutable {
-                    Text("Run").font(.caption).foregroundStyle(.secondary)
+                    Text("Run").font(.callout).foregroundStyle(.secondary)
                 }
                 Button(action: onReveal) {
                     Image(systemName: "folder")

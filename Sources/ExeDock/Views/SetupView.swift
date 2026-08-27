@@ -5,19 +5,32 @@ struct SetupView: View {
     @ObservedObject var setup: SetupCoordinator
 
     var body: some View {
+        if case .choosingEngine(let options, let recommended) = setup.stage {
+            EngineChoiceView(options: options, recommended: recommended) { chosen in
+                setup.chooseEngine(chosen)
+            }
+        } else {
+            standardStages
+        }
+    }
+
+    private var standardStages: some View {
         VStack(spacing: 16) {
             Spacer()
             Image(systemName: iconName)
-                .font(.system(size: 40))
+                .font(.system(size: 52))
                 .foregroundStyle(iconColor)
             Text(title)
-                .font(.title3)
+                .font(.title2)
                 .bold()
             Text(subtitle)
-                .font(.callout)
+                .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 380)
+                .frame(maxWidth: 420)
+            if let current = currentStep {
+                stepTracker(current: current).padding(.top, 6)
+            }
             if showsSpinner {
                 Group {
                     if let fraction = progressFraction {
@@ -34,6 +47,8 @@ struct SetupView: View {
                 Button("Check Again") {
                     setup.runSetup()
                 }
+                .font(.headline)
+                .padding(.vertical, 4)
                 .buttonStyle(.borderedProminent)
                 .padding(.top, 4)
             }
@@ -41,35 +56,88 @@ struct SetupView: View {
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.2), value: setup.stage)
     }
+
+    // MARK: - Step tracker
+
+    private enum Step: Int, CaseIterable {
+        case engine, bottle
+
+        var label: String {
+            switch self {
+            case .engine: return "Sikarugir engine"
+            case .bottle: return "Finishing up"
+            }
+        }
+    }
+
+    private var currentStep: Step? {
+        switch setup.stage {
+        case .checking, .extractingEngine, .waitingForSikarugirCreator: return .engine
+        case .initializingBottle: return .bottle
+        case .ready, .missingSikarugirCreator, .failed, .choosingEngine: return nil
+        }
+    }
+
+    private func stepTracker(current: Step) -> some View {
+        HStack(spacing: 8) {
+            ForEach(Step.allCases, id: \.self) { step in
+                HStack(spacing: 6) {
+                    Image(systemName: stepIcon(step, current: current))
+                        .foregroundStyle(stepColor(step, current: current))
+                    Text(step.label)
+                        .font(.caption)
+                        .foregroundStyle(stepColor(step, current: current))
+                }
+                if step != Step.allCases.last {
+                    Rectangle().fill(Color.secondary.opacity(0.3)).frame(width: 20, height: 1)
+                }
+            }
+        }
+    }
+
+    private func stepIcon(_ step: Step, current: Step) -> String {
+        if step.rawValue < current.rawValue { return "checkmark.circle.fill" }
+        if step == current { return "circle.dotted" }
+        return "circle"
+    }
+
+    private func stepColor(_ step: Step, current: Step) -> Color {
+        if step.rawValue < current.rawValue { return .green }
+        if step == current { return .accentColor }
+        return .secondary
+    }
+
+    // MARK: - Copy
 
     private var title: String {
         switch setup.stage {
-        case .checking: return "Checking for the Sikarugir engine…"
-        case .extractingEngine: return "Preparing the Sikarugir engine…"
-        case .initializingBottle: return "Setting up your bottle…"
+        case .checking: return "Getting ready…"
+        case .extractingEngine: return "Installing the Sikarugir engine…"
+        case .initializingBottle: return "Finishing up…"
         case .waitingForSikarugirCreator: return "Waiting for Sikarugir Creator…"
         case .missingSikarugirCreator: return "Sikarugir Creator isn't installed"
         case .failed: return "Setup ran into a problem"
-        case .ready: return "Ready"
+        case .ready, .choosingEngine: return "Ready"
         }
     }
 
     private var subtitle: String {
         switch setup.stage {
         case .checking:
-            return "Looking for a Wine engine Sikarugir Creator has already downloaded."
+            return "Looking for what Sikarugir Creator has already downloaded."
         case .extractingEngine:
-            return "Copying the engine into ExeDock's own bottle - this only happens once."
+            return "Copying it into ExeDock - this only happens once."
         case .initializingBottle:
-            return "Creating ExeDock's own Wine prefix."
+            return "Just a moment more."
         case .waitingForSikarugirCreator:
-            return "ExeDock opened Sikarugir Creator so it can download a Wine engine. Let it finish downloading - ExeDock will pick it up automatically, no need to relaunch."
+            return "ExeDock opened Sikarugir Creator so it can download what it needs to run your games. Let it finish - ExeDock will pick it up automatically, no need to relaunch."
         case .missingSikarugirCreator:
-            return "ExeDock runs on the Sikarugir engine and won't guess at a download for it. Install Sikarugir Creator, let it download an engine once, then check again here."
+            return "ExeDock runs on the Sikarugir engine and won't guess at a download for it. Install Sikarugir Creator, let it download once, then check again here."
         case .failed(let message):
             return message
-        case .ready:
+        case .ready, .choosingEngine:
             return ""
         }
     }
@@ -79,7 +147,7 @@ struct SetupView: View {
         case .missingSikarugirCreator: return "exclamationmark.triangle"
         case .failed: return "xmark.octagon"
         case .waitingForSikarugirCreator: return "arrow.triangle.2.circlepath"
-        default: return "gearshape.2"
+        default: return "gamecontroller.fill"
         }
     }
 
@@ -95,15 +163,14 @@ struct SetupView: View {
         case .checking: return 0.15
         case .extractingEngine: return 0.45
         case .initializingBottle: return 0.8
-        case .waitingForSikarugirCreator: return nil
-        case .missingSikarugirCreator, .failed, .ready: return nil
+        default: return nil
         }
     }
 
     private var showsSpinner: Bool {
         switch setup.stage {
         case .checking, .extractingEngine, .initializingBottle, .waitingForSikarugirCreator: return true
-        case .missingSikarugirCreator, .failed, .ready: return false
+        default: return false
         }
     }
 
@@ -112,5 +179,56 @@ struct SetupView: View {
         case .missingSikarugirCreator, .failed: return true
         default: return false
         }
+    }
+}
+
+/// Shown when Sikarugir Creator has more than one engine downloaded and ready - a real choice, so
+/// setup pauses and asks instead of silently guessing.
+private struct EngineChoiceView: View {
+    let options: [String]
+    let recommended: String?
+    let onChoose: (String) -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "gamecontroller.fill")
+                .font(.system(size: 44))
+                .foregroundStyle(.secondary)
+            Text("Choose a Wine engine")
+                .font(.title2)
+                .bold()
+            Text("Sikarugir Creator has more than one engine ready to go. Recommended is the safest bet for most games - you can always change this later.")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+
+            VStack(spacing: 10) {
+                ForEach(options, id: \.self) { name in
+                    Button {
+                        onChoose(name)
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(name).font(.headline)
+                                if name == recommended {
+                                    Text("Recommended").font(.caption).foregroundStyle(Color.accentColor)
+                                }
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                        }
+                        .padding(12)
+                        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: 420)
+            Spacer()
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

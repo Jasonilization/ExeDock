@@ -5,12 +5,13 @@ struct AppRow: View {
     let app: DetectedApp
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
             Image(nsImage: AppIconProvider.icon(for: app))
                 .resizable()
-                .frame(width: 32, height: 32)
+                .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.displayName)
+                    .font(.body)
                 Text(app.exePath)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
@@ -31,11 +32,14 @@ struct AppRow: View {
             } label: {
                 Image(systemName: "folder")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
             Button("Run") {
                 model.run(exePath: app.exePath, bottle: app.bottle)
             }
+            .font(.headline)
+            .padding(.vertical, 4)
+            .buttonStyle(.borderedProminent)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
 }

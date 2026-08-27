@@ -4,10 +4,9 @@ import AppKit
 @MainActor
 final class AppModel: ObservableObject {
     enum SidebarSection: Hashable {
+        case gameMode
         case library
         case cDrive
-        case gameMode
-        case about
     }
 
     enum SteamStatus: Equatable {
@@ -19,12 +18,23 @@ final class AppModel: ObservableObject {
 
     @Published var detectedApps: [DetectedApp] = []
     @Published var bottles: [Bottle] = []
-    @Published var selectedSection: SidebarSection = .library
+    // Steam-first: gamers land straight on the dashboard, not a generic file browser.
+    @Published var selectedSection: SidebarSection = .gameMode
     @Published var statusMessage: String?
     @Published var errorMessage: String?
     @Published var steamStatus: SteamStatus = .notInstalled
-    @Published var gameModeConfig = GameModeConfig()
+    // didSet (not a separate save call) so every mutation persists automatically, including direct
+    // bindings from the settings UI ($model.gameModeConfig.dxvk, etc.) - not just `setOverride`.
+    @Published var gameModeConfig = GameModeConfig() { didSet { persistGameSettings() } }
+    @Published var perGameConfigs: [String: GameModeConfig] = [:] { didSet { persistGameSettings() } }
     @Published var isGameModeUnlocked = false
+    @Published var steamGames: [SteamGame] = []
+    @Published var isLoadingSteamGames = false
+    @Published var steamProfile: SteamProfile?
+    /// True while a Steam/game launch is in flight - drives the loading banner and disables launch
+    /// buttons so an impatient double-click can't start a second, competing Steam process (see
+    /// `launchSteam`).
+    @Published var isLaunchingSteam = false
 
     var isInstallingSteam: Bool {
         if case .installing = steamStatus { return true }
@@ -42,7 +52,12 @@ final class AppModel: ObservableObject {
     func onSetupReady() {
         isGameModeUnlocked = SteamInstaller.isSteamInstalled
         if isGameModeUnlocked { steamStatus = .installed }
+        let saved = GameSettingsStore.load()
+        gameModeConfig = saved.defaults
+        perGameConfigs = saved.perGame
         refreshBottlesAndApps()
+        refreshSteamGames()
+        refreshSteamProfile()
     }
 
     func refreshBottlesAndApps() {
@@ -51,19 +66,123 @@ final class AppModel: ObservableObject {
         detectedApps = knownBottles.flatMap(CDriveScanner.scan)
     }
 
-    func run(exePath: String, bottle: Bottle) {
-        let env = (isGameModeUnlocked && bottle.id == SteamInstaller.steamBottle.id) ? gameModeConfig.environment : [:]
-        let name = (exePath as NSString).lastPathComponent
+    func refreshSteamGames() {
+        guard isGameModeUnlocked else {
+            steamGames = []
+            return
+        }
+        isLoadingSteamGames = true
+        Task.detached(priority: .utility) { [weak self] in
+            let games = SteamLibrary.installedGames()
+            await MainActor.run { [weak self] in
+                self?.steamGames = games
+                self?.isLoadingSteamGames = false
+            }
+        }
+    }
+
+    func refreshSteamProfile() {
+        guard isGameModeUnlocked else {
+            steamProfile = nil
+            return
+        }
+        Task.detached(priority: .utility) { [weak self] in
+            let profile = SteamProfileReader.currentProfile()
+            await MainActor.run { [weak self] in self?.steamProfile = profile }
+        }
+    }
+
+    /// Settings that actually apply to `game` - its own override if it has one, otherwise the
+    /// shared default. Advanced Mode is the only place a user can create an override.
+    func config(for game: SteamGame) -> GameModeConfig {
+        perGameConfigs[game.appID] ?? gameModeConfig
+    }
+
+    func setOverride(_ config: GameModeConfig?, for game: SteamGame) {
+        perGameConfigs[game.appID] = config
+    }
+
+    private func persistGameSettings() {
+        GameSettingsStore.save(defaults: gameModeConfig, perGame: perGameConfigs)
+    }
+
+    func run(exePath: String, bottle: Bottle, arguments: [String] = [], displayName: String? = nil) {
+        let isSteamBottle = isGameModeUnlocked && bottle.id == SteamInstaller.steamBottle.id
+        let env = isSteamBottle ? gameModeConfig.environment : [:]
+        let engineName = isSteamBottle ? gameModeConfig.engineName : nil
+        let name = displayName ?? (exePath as NSString).lastPathComponent
         statusMessage = "Launching \(name)…"
         // A bottle that isn't initialized yet can take a while (wineboot + a grace period for its
         // background helper processes to finish) - never do that on the main thread.
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                try ExeRunner.run(exePath: exePath, in: bottle, extraEnvironment: env)
+                try ExeRunner.run(exePath: exePath, in: bottle, arguments: arguments, extraEnvironment: env, engineName: engineName)
                 await MainActor.run { [weak self] in self?.statusMessage = "Launched \(name)" }
             } catch {
                 await MainActor.run { [weak self] in self?.errorMessage = error.localizedDescription }
             }
+        }
+    }
+
+    /// Games are always started through Steam itself (`-applaunch <appid>`) rather than by running
+    /// their executable directly - see `SteamGame.iconExePath` for why. Uses that game's own
+    /// settings override if it has one.
+    func launchSteamGame(_ game: SteamGame) {
+        guard ensureSteamStillInstalled() else { return }
+        launchSteam(arguments: ["-applaunch", game.appID], displayName: game.name, config: config(for: game))
+    }
+
+    /// Opens the Steam client itself (no specific game) - e.g. to browse the store or install
+    /// something new.
+    func openSteamClient() {
+        guard ensureSteamStillInstalled() else { return }
+        launchSteam(arguments: [], displayName: "Steam", config: gameModeConfig)
+    }
+
+    /// Steam can vanish out from under ExeDock (uninstalled, a broken update) without anything else
+    /// noticing, since nothing polls for it while the app just sits open. Re-check right before
+    /// trying to launch it, and if it's gone, flip back to the locked state and kick off a reinstall
+    /// automatically - `SteamInstaller.installAndLaunch` already knows to skip the download step if
+    /// it turns out Steam actually is there after all.
+    @discardableResult
+    private func ensureSteamStillInstalled() -> Bool {
+        guard SteamInstaller.isSteamInstalled else {
+            isGameModeUnlocked = false
+            steamStatus = .notInstalled
+            errorMessage = "Steam isn't where ExeDock expected it anymore - reinstalling…"
+            installAndRunSteam()
+            return false
+        }
+        return true
+    }
+
+    /// A single, fire-and-forget launch - deliberately NOT retried. Steam.exe's own singleton
+    /// behavior means a second invocation while Steam is already running (or still starting up) just
+    /// messages the existing process and exits quickly, often with a non-zero status - that's normal,
+    /// not a failure, and retrying with different settings on that signal previously caused ExeDock
+    /// to launch a second, competing Steam process on top of a first one that was still legitimately
+    /// starting up (confirmed in ~/Library/Logs/ExeDock: two full Steam startups five seconds apart).
+    /// The `guard` below is a second line of defense against that - it ignores a launch request while
+    /// one is already in flight, on top of the UI disabling launch buttons for the same reason.
+    private func launchSteam(arguments: [String], displayName: String, config: GameModeConfig) {
+        guard !isLaunchingSteam else { return }
+        isLaunchingSteam = true
+        statusMessage = "Launching \(displayName)…"
+        Task.detached(priority: .userInitiated) { [weak self] in
+            do {
+                try ExeRunner.run(
+                    exePath: SteamInstaller.installedSteamExePath, in: SteamInstaller.steamBottle,
+                    arguments: arguments, extraEnvironment: config.environment, engineName: config.engineName
+                )
+                await MainActor.run { [weak self] in self?.statusMessage = "Launched \(displayName)" }
+            } catch {
+                await MainActor.run { [weak self] in self?.errorMessage = error.localizedDescription }
+            }
+            // Steam's own window can take a while to appear even after the process starts (first
+            // launch, or a self-update - real startups seen taking 10+ seconds) - keep the "in
+            // progress" indicator up for a bit so it doesn't flash by before anyone notices it.
+            try? await Task.sleep(for: .seconds(6))
+            await MainActor.run { [weak self] in self?.isLaunchingSteam = false }
         }
     }
 
@@ -84,14 +203,16 @@ final class AppModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let exePath = try await SteamInstaller.installAndLaunch { [self] message in
+                _ = try await SteamInstaller.installAndLaunch { [self] message in
                     Task { @MainActor in self.steamStatus = .installing(message) }
                 }
                 self.steamStatus = .installed
                 self.isGameModeUnlocked = true
                 self.selectedSection = .gameMode
-                self.run(exePath: exePath, bottle: SteamInstaller.steamBottle)
+                self.openSteamClient()
                 self.refreshBottlesAndApps()
+                self.refreshSteamGames()
+                self.refreshSteamProfile()
             } catch {
                 self.steamStatus = .failed(error.localizedDescription)
                 self.errorMessage = error.localizedDescription
@@ -101,9 +222,5 @@ final class AppModel: ObservableObject {
 
     func revealInFinder(_ path: String) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
-    }
-
-    func openSikarugirCreator() {
-        NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/Sikarugir Creator.app"))
     }
 }
