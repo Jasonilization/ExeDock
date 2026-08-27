@@ -1,66 +1,82 @@
-# ExeDock
+# Playdock
 
-A lightweight drag-and-drop UI for running Windows `.exe` files on the Mac.
+A Mac dashboard for the Windows games (and programs) you're already running through Wine - built
+on top of the Sikarugir engine, not instead of it.
 
-Select or drag an `.exe` and ExeDock just runs it - no wrapper-creation ceremony, no manual Wine
-setup. It also autodetects Windows programs already installed on any bottle's "C: drive" and gives
-you a Finder-style browser to poke around one directly, plus a one-click **Install & Run Steam**
-button that unlocks **Game Mode**.
+Steam is the front door: install it once, and Playdock shows your library as a proper grid -
+box art, a short description, your account's name and avatar - with a big icon you double-click to
+open Steam itself, same as you would on the desktop. Drag-and-drop `.exe` support is still in here
+too, tucked under "Exe Loader" in the sidebar for when you just need to run something once.
 
-## Under the hood
+## Why this exists
 
-ExeDock does not reimplement Windows compatibility. It runs on the **Sikarugir** engine already
-installed on this Mac - the same Wine engine that powers [Sikarugir Creator](https://github.com)
-and any wrapper apps it has built (this machine already has wrapper apps built with it). ExeDock:
+Wine wrapper tools are great once you've built a wrapper. But "I just installed a game in Steam,
+why do I need to build anything" is a real gap, and that's what this fills - point it at a Steam
+bottle and it just works, no per-game setup.
 
-- Reuses the Wine engine Sikarugir Creator already downloaded to
-  `~/Library/Application Support/Sikarugir/Engines/`, extracting its own private working copy.
-- Runs everything in its **own** bottles under `~/Library/Application Support/ExeDock/Bottles/`,
-  completely separate from any Sikarugir wrapper app's bottle.
-- Never writes to, edits, or otherwise modifies Sikarugir Creator or any wrapper app it created -
-  every interaction with those is read-only (listing an engine folder, reading a `drive_c`).
+## How it fits with Sikarugir
 
-If you need full control over engine versions, DXVK/MoltenVK tuning per-app, or want to build a
-distributable wrapper for one specific program, use Sikarugir Creator directly - ExeDock's About
-tab has a button that opens it. ExeDock is the "drag it, run it" shortcut on top.
+Playdock doesn't reimplement Windows compatibility - it reuses whatever Wine engine Sikarugir
+Creator has already downloaded to `~/Library/Application Support/Sikarugir/Engines/`, extracting
+its own private copy of it. Everything Playdock touches under `~/Library/Application
+Support/ExeDock/` is its own - a separate bottle for Steam, a separate default bottle for
+everything else - so it never writes to, or otherwise disturbs, Sikarugir Creator or any wrapper
+app it's already built. (Yes, the folder's still called `ExeDock` internally - that's what this
+project used to be called before the Steam-first rework, and renaming it on disk would silently
+orphan anyone's existing bottles. Not worth it for a folder name nobody sees.)
 
-## Features
+If you need per-app engine builds, a specific DXVK/MoltenVK combo, or want to hand someone a
+distributable wrapper for one program, that's still Sikarugir Creator's job - Playdock is the
+"just let me play my games" layer on top, not a replacement for it.
 
-- **Run anything**: drag an `.exe` onto the window, or use *Select EXE…*.
-- **Library**: every program ExeDock has found (its own bottles + read-only from Sikarugir wrapper
-  apps like the ones already on this machine) in one searchable list.
-- **C: Drive browser**: a Finder-style view of any bottle's `drive_c` - navigate folders, run an
-  `.exe` in place, or reveal any file in Finder. Pick which bottle to browse from the dropdown at
-  the top.
-- **Install & Run Steam**: downloads Valve's official Steam bootstrapper, silently installs it into
-  a dedicated Steam bottle, and launches it.
-- **Game Mode**: once Steam is installed, exposes the same engine/graphics toggles Sikarugir
-  wrappers already support (D3DMETAL, DXVK, DXMT, MoltenVK CX, WINEESYNC/WINEMSYNC, engine choice)
-  for that Steam/game bottle.
+Sikarugir Creator itself has to be installed by you - there's no real download URL for it baked
+into this app on purpose. Guessing at one and silently fetching it felt like a bad idea, so if it's
+missing, Playdock just tells you and waits.
+
+## What it does
+
+- **Steam dashboard** - your installed games as cards (art + description pulled from Steam's public
+  store API, cached locally), your account name/avatar read straight out of Steam's own local
+  config, double-click the Steam icon to launch it.
+- **Advanced Mode** (off by default) - per-game engine/graphics/sync overrides, for the handful of
+  games that actually need something different from your defaults.
+- **Exe Loader** - drag an `.exe` onto the window, browse any bottle's C: drive Finder-style, or
+  search everything Playdock's already found across your bottles.
+- **Setup that gets out of your way** - on first launch it finds/extracts an engine and sets up its
+  own bottle automatically; if Sikarugir Creator has more than one engine downloaded, it asks which
+  one to use (with a recommended pick) instead of silently guessing.
 
 ## Building from source
 
-Full Xcode isn't required - only Swift + Command Line Tools:
+No Xcode required, just Swift + Command Line Tools:
 
 ```sh
-./Scripts/build_app.sh        # swift build -c release, assemble ExeDock.app, codesign
-./Scripts/make_dmg.sh 1.0.0   # package dist/ExeDock-1.0.0.dmg
+./Scripts/build_app.sh        # swift build -c release, assemble Playdock.app, codesign
+./Scripts/make_dmg.sh 1.2.0   # package dist/Playdock-1.2.0.dmg
 ```
 
 ## Installing
 
-Download the `.dmg` from [Releases](../../releases), drag `ExeDock.app` to `/Applications`.
+Grab the `.dmg` from [Releases](../../releases) and drag the app into `/Applications`.
 
-This build is signed with a free Apple Development identity, not a paid Developer ID, so it isn't
-notarized. On first launch, Gatekeeper will say it's from an unidentified developer - right-click
-`ExeDock.app` → **Open**, or run:
+It's signed with a free Apple Development identity rather than a paid Developer ID, so it's not
+notarized - Gatekeeper will call it out as being from an unidentified developer on first launch.
+Right-click the app → **Open**, or:
 
 ```sh
-xattr -dr com.apple.quarantine /Applications/ExeDock.app
+xattr -dr com.apple.quarantine "/Applications/Playdock.app"
 ```
 
 ## Requirements
 
-Sikarugir Creator must be installed and have downloaded at least one Wine engine
-(`~/Library/Application Support/Sikarugir/Engines/`) before ExeDock can run anything - that's the
-engine ExeDock reuses.
+Sikarugir Creator needs to be installed with at least one Wine engine already downloaded
+(`~/Library/Application Support/Sikarugir/Engines/`) - that's the engine this app reuses.
+
+## What's new
+
+**Steam-first rework** - the app used to be a generic exe launcher first, with Steam bolted on as
+one feature (back when it was still called ExeDock). This flips that: Steam's dashboard is now the
+default screen, with real account/game data pulled locally, per-game settings for anyone who wants
+them, and a launch flow that no longer occasionally starts Steam twice (a real bug from an earlier
+build - a retry heuristic was misreading Steam's normal "already running, handing off" exit as a
+failure and launching a second copy on top of it).

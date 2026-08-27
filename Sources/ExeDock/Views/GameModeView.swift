@@ -6,9 +6,22 @@ struct GameModeView: View {
     @AppStorage("com.exedock.advancedMode") private var isAdvancedMode = false
     @LocalState private var search = ""
     @LocalState private var showingSettingsSheet = false
+    @LocalState private var sortOption: GameSortOption = .name
+
+    private enum GameSortOption: String, CaseIterable, Identifiable {
+        case name = "Name"
+        case recentlyUpdated = "Recently Updated"
+        var id: String { rawValue }
+    }
 
     private var filteredGames: [SteamGame] {
-        search.isEmpty ? model.steamGames : model.steamGames.filter { $0.name.localizedCaseInsensitiveContains(search) }
+        let filtered = search.isEmpty ? model.steamGames : model.steamGames.filter { $0.name.localizedCaseInsensitiveContains(search) }
+        switch sortOption {
+        case .name:
+            return filtered.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        case .recentlyUpdated:
+            return filtered.sorted { ($0.lastUpdated ?? .distantPast) > ($1.lastUpdated ?? .distantPast) }
+        }
     }
 
     var body: some View {
@@ -52,9 +65,7 @@ struct GameModeView: View {
     private var dashboard: some View {
         VStack(spacing: 0) {
             header
-            if model.isLaunchingSteam {
-                launchingBanner
-            }
+            steamLaunchTile
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
@@ -64,28 +75,10 @@ struct GameModeView: View {
                 .padding(24)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: model.isLaunchingSteam)
+        .animation(.easeInOut(duration: 0.2), value: model.launchingTarget)
         .sheet(isPresented: $showingSettingsSheet) {
             DefaultSettingsSheet(isAdvancedMode: $isAdvancedMode)
         }
-    }
-
-    /// Steam's own window can take several seconds to actually appear (first launch, or it's
-    /// self-updating) even once ExeDock has successfully started it - without this, clicking Launch
-    /// looked like it did nothing. Stays up briefly after the process starts (see
-    /// `AppModel.launchSteam`), and disables every launch button meanwhile so a second click can't
-    /// start a competing Steam process.
-    private var launchingBanner: some View {
-        HStack(spacing: 10) {
-            ProgressView().controlSize(.small)
-            Text(model.statusMessage ?? "Launching…")
-                .font(.callout)
-            Spacer()
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-        .background(Color.accentColor.opacity(0.12))
-        .transition(.opacity)
     }
 
     private var header: some View {
@@ -106,6 +99,7 @@ struct GameModeView: View {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
             .buttonStyle(.bordered)
+            .keyboardShortcut("r", modifiers: .command)
             .disabled(model.isLoadingSteamGames)
 
             Button {
@@ -114,25 +108,41 @@ struct GameModeView: View {
                 Label("Settings", systemImage: "gearshape")
             }
             .buttonStyle(.bordered)
-
-            Button {
-                model.openSteamClient()
-            } label: {
-                if model.isLaunchingSteam {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        Text("Launching…")
-                    }
-                } else {
-                    Text("Open Steam")
-                }
-            }
-            .font(.headline)
-            .padding(.vertical, 4)
-            .buttonStyle(.borderedProminent)
-            .disabled(model.isLaunchingSteam)
         }
         .padding(18)
+    }
+
+    /// The big, hard-to-miss way to open Steam itself - double-click, the same gesture as opening
+    /// anything else on a Mac, using Steam's own real icon (read straight off the installed
+    /// Steam.exe, the same way every game card's fallback icon already does - not a redrawn/borrowed
+    /// logo). Shows exactly one spinner, right on the icon, while launching.
+    private var steamLaunchTile: some View {
+        let isLaunching = model.launchingTarget == .steam
+        return VStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 22)
+                    .fill(.quaternary.opacity(0.35))
+                    .frame(width: 108, height: 108)
+                Image(nsImage: AppIconProvider.icon(forPath: SteamInstaller.installedSteamExePath))
+                    .resizable()
+                    .frame(width: 68, height: 68)
+                    .opacity(isLaunching ? 0.3 : 1)
+                if isLaunching {
+                    ProgressView().controlSize(.large)
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.quaternary, lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 22))
+            .onTapGesture(count: 2) {
+                model.openSteamClient()
+            }
+            .allowsHitTesting(model.launchingTarget == nil)
+            Text(isLaunching ? "Launching Steam…" : "Double-click to open Steam")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity)
     }
 
     private var profileAvatar: some View {
@@ -150,14 +160,32 @@ struct GameModeView: View {
     }
 
     private var searchBar: some View {
-        HStack {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Search your games", text: $search)
-                .textFieldStyle(.plain)
-                .font(.title3)
+        HStack(spacing: 12) {
+            HStack {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Search your games", text: $search)
+                    .textFieldStyle(.plain)
+                    .font(.title3)
+                if !search.isEmpty {
+                    Button {
+                        search = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(10)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+
+            Picker("Sort", selection: $sortOption) {
+                ForEach(GameSortOption.allCases) { option in
+                    Text(option.rawValue).tag(option)
+                }
+            }
+            .frame(maxWidth: 220)
         }
-        .padding(10)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private let gridColumns = [GridItem(.adaptive(minimum: 220, maximum: 260), spacing: 18)]
@@ -248,7 +276,7 @@ private struct GameCardView: View {
                 Button {
                     model.launchSteamGame(game)
                 } label: {
-                    if model.isLaunchingSteam {
+                    if model.launchingTarget == .game(game.appID) {
                         HStack(spacing: 6) {
                             ProgressView().controlSize(.small)
                             Text("Launching…")
@@ -262,16 +290,43 @@ private struct GameCardView: View {
                 .font(.headline)
                 .padding(.vertical, 4)
                 .buttonStyle(.borderedProminent)
-                .disabled(model.isLaunchingSteam)
+                .disabled(model.launchingTarget != nil)
                 .padding(.top, 2)
             }
             .padding(12)
         }
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary))
+        .contextMenu {
+            Button {
+                model.revealInFinder(installFolderPath)
+            } label: {
+                Label("Reveal Install Folder", systemImage: "folder")
+            }
+            Button {
+                model.openStorePage(for: game)
+            } label: {
+                Label("View Store Page", systemImage: "safari")
+            }
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(game.appID, forType: .string)
+            } label: {
+                Label("Copy App ID", systemImage: "doc.on.doc")
+            }
+        }
         .task(id: game.appID) {
             storeInfo = await SteamStoreInfoCache.shared.info(for: game.appID)
         }
+        .onHover { isHovering in
+            if isHovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+    }
+
+    private var installFolderPath: String {
+        (SteamInstaller.steamBottle.driveCPath as NSString)
+            .appendingPathComponent("Program Files (x86)/Steam/steamapps/common")
+            .appending("/\(game.installDir)")
     }
 
     private var detailsRow: some View {
