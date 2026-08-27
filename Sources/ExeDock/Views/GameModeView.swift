@@ -35,21 +35,20 @@ struct GameModeView: View {
     // MARK: - Locked
 
     private var lockedState: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 24) {
             if model.isInstallingSteam {
                 LoadingDotsView(message: installingMessage)
             } else {
                 Image(systemName: "gamecontroller")
-                    .font(.system(size: 48))
+                    .font(.system(size: 64))
                     .foregroundStyle(.secondary)
                 Text("Your games live here once Steam is installed.")
-                    .font(.title3)
+                    .font(.title2)
                 Button("Install & Run Steam") {
                     model.installAndRunSteam()
                 }
-                .font(.headline)
-                .padding(.vertical, 4)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.big)
+                .frame(maxWidth: 320)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -82,13 +81,13 @@ struct GameModeView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 16) {
             profileAvatar
             VStack(alignment: .leading, spacing: 2) {
                 Text(model.steamProfile?.personaName ?? "Steam")
-                    .font(.title2).bold()
+                    .font(.title).bold()
                 Text(model.steamGames.isEmpty ? "No games installed yet" : "\(model.steamGames.count) game\(model.steamGames.count == 1 ? "" : "s") installed")
-                    .font(.callout)
+                    .font(.title3)
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -109,40 +108,64 @@ struct GameModeView: View {
             }
             .buttonStyle(.bordered)
         }
-        .padding(18)
+        .padding(22)
     }
 
     /// The big, hard-to-miss way to open Steam itself - double-click, the same gesture as opening
-    /// anything else on a Mac, using Steam's own real icon (read straight off the installed
-    /// Steam.exe, the same way every game card's fallback icon already does - not a redrawn/borrowed
-    /// logo). Shows exactly one spinner, right on the icon, while launching.
+    /// anything else on a Mac. Uses Steam's own real icon when the native Mac Steam.app is present
+    /// on this machine (legitimately already installed by the user, same as how AppIconProvider
+    /// reads any other already-installed app's icon) - falling back to an in-house glyph otherwise,
+    /// since NSWorkspace can't extract an icon from a .exe buried in a private, never-Finder-indexed
+    /// Wine bottle. Shows exactly one spinner, right on the icon, while launching.
+    private static let nativeSteamAppPath = "/Applications/Steam.app"
+
     private var steamLaunchTile: some View {
         let isLaunching = model.launchingTarget == .steam
-        return VStack(spacing: 8) {
+        return VStack(spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 22)
-                    .fill(.quaternary.opacity(0.35))
-                    .frame(width: 108, height: 108)
-                Image(nsImage: AppIconProvider.icon(forPath: SteamInstaller.installedSteamExePath))
-                    .resizable()
-                    .frame(width: 68, height: 68)
+                steamIcon
                     .opacity(isLaunching ? 0.3 : 1)
                 if isLaunching {
                     ProgressView().controlSize(.large)
                 }
             }
-            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.quaternary, lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 22))
+            .frame(width: 160, height: 160)
+            .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
+            .contentShape(RoundedRectangle(cornerRadius: 30))
+            .hoverSpin()
             .onTapGesture(count: 2) {
                 model.openSteamClient()
             }
             .allowsHitTesting(model.launchingTarget == nil)
             Text(isLaunching ? "Launching Steam…" : "Double-click to open Steam")
-                .font(.callout)
+                .font(.title3)
                 .foregroundStyle(.secondary)
         }
-        .padding(.bottom, 16)
+        .padding(.bottom, 20)
         .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var steamIcon: some View {
+        if FileManager.default.fileExists(atPath: Self.nativeSteamAppPath) {
+            Image(nsImage: AppIconProvider.icon(forPath: Self.nativeSteamAppPath))
+                .resizable()
+                .frame(width: 160, height: 160)
+        } else {
+            RoundedRectangle(cornerRadius: 30)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.53, green: 0.33, blue: 0.96), Color(red: 0.16, green: 0.18, blue: 0.52)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
+                .overlay(
+                    Image(systemName: "gamecontroller.fill")
+                        .font(.system(size: 64, weight: .medium))
+                        .foregroundStyle(.white)
+                )
+                .overlay(RoundedRectangle(cornerRadius: 30).strokeBorder(.white.opacity(0.15), lineWidth: 1))
+        }
     }
 
     private var profileAvatar: some View {
@@ -155,8 +178,9 @@ struct GameModeView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(width: 48, height: 48)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .frame(width: 64, height: 64)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .hoverSpin()
     }
 
     private var searchBar: some View {
@@ -188,14 +212,14 @@ struct GameModeView: View {
         }
     }
 
-    private let gridColumns = [GridItem(.adaptive(minimum: 220, maximum: 260), spacing: 18)]
+    private let gridColumns = [GridItem(.adaptive(minimum: 260, maximum: 320), spacing: 20)]
 
     @ViewBuilder
     private var gamesGrid: some View {
         if model.isLoadingSteamGames && model.steamGames.isEmpty {
             // Shimmering placeholders in the exact grid the real cards will land in - reads as a
             // proper dashboard loading in, not just "something, somewhere, is thinking."
-            LazyVGrid(columns: gridColumns, spacing: 18) {
+            LazyVGrid(columns: gridColumns, spacing: 20) {
                 ForEach(0..<6, id: \.self) { _ in GameCardSkeleton() }
             }
         } else if model.steamGames.isEmpty {
@@ -207,7 +231,7 @@ struct GameModeView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 40)
         } else {
-            LazyVGrid(columns: gridColumns, spacing: 18) {
+            LazyVGrid(columns: gridColumns, spacing: 20) {
                 ForEach(filteredGames) { game in
                     GameCardView(game: game, isAdvancedMode: isAdvancedMode)
                 }
@@ -246,10 +270,10 @@ private struct GameCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             artwork
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 4) {
                     Text(game.name)
-                        .font(.headline)
+                        .font(.title3.weight(.semibold))
                         .lineLimit(1)
                     Spacer()
                     if isAdvancedMode {
@@ -277,26 +301,22 @@ private struct GameCardView: View {
                     model.launchSteamGame(game)
                 } label: {
                     if model.launchingTarget == .game(game.appID) {
-                        HStack(spacing: 6) {
-                            ProgressView().controlSize(.small)
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small).tint(.white)
                             Text("Launching…")
                         }
-                        .frame(maxWidth: .infinity)
                     } else {
                         Text("Launch")
-                            .frame(maxWidth: .infinity)
                     }
                 }
-                .font(.headline)
-                .padding(.vertical, 4)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.big)
                 .disabled(model.launchingTarget != nil)
-                .padding(.top, 2)
+                .padding(.top, 4)
             }
-            .padding(12)
+            .padding(16)
         }
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary))
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.quaternary))
         .contextMenu {
             Button {
                 model.revealInFinder(installFolderPath)
@@ -349,15 +369,16 @@ private struct GameCardView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
-                Image(nsImage: AppIconProvider.icon(forPath: game.iconExePath ?? SteamInstaller.installedSteamExePath))
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .padding(28)
+                // Not a real exe-icon lookup on purpose - NSWorkspace can't extract one from a file
+                // buried in a private, never-Finder-indexed Wine bottle, so it just renders blank.
+                Image(systemName: "gamecontroller.fill")
+                    .font(.system(size: 44))
+                    .foregroundStyle(Color.accentColor)
                     .frame(maxWidth: .infinity)
                     .background(Color.accentColor.opacity(0.15))
             }
         }
-        .frame(height: 100)
+        .frame(height: 140)
         .clipped()
     }
 }
@@ -507,17 +528,17 @@ private struct GameCardSkeleton: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Rectangle().fill(shimmerColor).frame(height: 100)
-            VStack(alignment: .leading, spacing: 8) {
-                RoundedRectangle(cornerRadius: 4).fill(shimmerColor).frame(width: 130, height: 16)
+            Rectangle().fill(shimmerColor).frame(height: 140)
+            VStack(alignment: .leading, spacing: 10) {
+                RoundedRectangle(cornerRadius: 4).fill(shimmerColor).frame(width: 150, height: 20)
                 RoundedRectangle(cornerRadius: 4).fill(shimmerColor).frame(height: 10)
-                RoundedRectangle(cornerRadius: 4).fill(shimmerColor).frame(width: 90, height: 10)
-                RoundedRectangle(cornerRadius: 8).fill(shimmerColor).frame(height: 34).padding(.top, 4)
+                RoundedRectangle(cornerRadius: 4).fill(shimmerColor).frame(width: 100, height: 10)
+                RoundedRectangle(cornerRadius: 12).fill(shimmerColor).frame(height: 50).padding(.top, 4)
             }
-            .padding(12)
+            .padding(16)
         }
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary))
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.quaternary))
         .onAppear {
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                 isShimmering = true
