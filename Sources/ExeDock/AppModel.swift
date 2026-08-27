@@ -16,6 +16,13 @@ final class AppModel: ObservableObject {
         case failed(String)
     }
 
+    /// What (if anything) is currently being launched - tracked per-target rather than one blanket
+    /// flag so only the control someone actually clicked shows a spinner, not every game card at once.
+    enum LaunchTarget: Equatable {
+        case steam
+        case game(String)
+    }
+
     @Published var detectedApps: [DetectedApp] = []
     @Published var bottles: [Bottle] = []
     // Steam-first: gamers land straight on the dashboard, not a generic file browser.
@@ -31,10 +38,9 @@ final class AppModel: ObservableObject {
     @Published var steamGames: [SteamGame] = []
     @Published var isLoadingSteamGames = false
     @Published var steamProfile: SteamProfile?
-    /// True while a Steam/game launch is in flight - drives the loading banner and disables launch
-    /// buttons so an impatient double-click can't start a second, competing Steam process (see
-    /// `launchSteam`).
-    @Published var isLaunchingSteam = false
+    /// Non-nil while a Steam/game launch is in flight - drives the spinner on whichever control
+    /// started it, and blocks a second launch from starting until this clears (see `launchSteam`).
+    @Published var launchingTarget: LaunchTarget?
 
     var isInstallingSteam: Bool {
         if case .installing = steamStatus { return true }
@@ -129,14 +135,14 @@ final class AppModel: ObservableObject {
     /// settings override if it has one.
     func launchSteamGame(_ game: SteamGame) {
         guard ensureSteamStillInstalled() else { return }
-        launchSteam(arguments: ["-applaunch", game.appID], displayName: game.name, config: config(for: game))
+        launchSteam(target: .game(game.appID), arguments: ["-applaunch", game.appID], displayName: game.name, config: config(for: game))
     }
 
     /// Opens the Steam client itself (no specific game) - e.g. to browse the store or install
     /// something new.
     func openSteamClient() {
         guard ensureSteamStillInstalled() else { return }
-        launchSteam(arguments: [], displayName: "Steam", config: gameModeConfig)
+        launchSteam(target: .steam, arguments: [], displayName: "Steam", config: gameModeConfig)
     }
 
     /// Steam can vanish out from under ExeDock (uninstalled, a broken update) without anything else
@@ -164,9 +170,9 @@ final class AppModel: ObservableObject {
     /// starting up (confirmed in ~/Library/Logs/ExeDock: two full Steam startups five seconds apart).
     /// The `guard` below is a second line of defense against that - it ignores a launch request while
     /// one is already in flight, on top of the UI disabling launch buttons for the same reason.
-    private func launchSteam(arguments: [String], displayName: String, config: GameModeConfig) {
-        guard !isLaunchingSteam else { return }
-        isLaunchingSteam = true
+    private func launchSteam(target: LaunchTarget, arguments: [String], displayName: String, config: GameModeConfig) {
+        guard launchingTarget == nil else { return }
+        launchingTarget = target
         statusMessage = "Launching \(displayName)…"
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
@@ -182,7 +188,7 @@ final class AppModel: ObservableObject {
             // launch, or a self-update - real startups seen taking 10+ seconds) - keep the "in
             // progress" indicator up for a bit so it doesn't flash by before anyone notices it.
             try? await Task.sleep(for: .seconds(6))
-            await MainActor.run { [weak self] in self?.isLaunchingSteam = false }
+            await MainActor.run { [weak self] in self?.launchingTarget = nil }
         }
     }
 
@@ -222,5 +228,10 @@ final class AppModel: ObservableObject {
 
     func revealInFinder(_ path: String) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+    }
+
+    func openStorePage(for game: SteamGame) {
+        guard let url = URL(string: "https://store.steampowered.com/app/\(game.appID)") else { return }
+        NSWorkspace.shared.open(url)
     }
 }

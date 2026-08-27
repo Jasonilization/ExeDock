@@ -53,7 +53,7 @@ struct ContentView: View {
                 }
             }
         }
-        .alert("ExeDock", isPresented: errorBinding) {
+        .alert("Playdock", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(model.errorMessage ?? "")
