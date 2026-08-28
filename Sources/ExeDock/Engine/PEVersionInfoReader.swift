@@ -181,10 +181,13 @@ enum PEVersionInfoReader {
             guard let childLength = readUInt16LE(data, at: cursor), childLength > 0 else { break }
             let key = readUTF16String(data, from: cursor + 6)
             if key.text == "StringFileInfo", let strings = parseStringFileInfo(data, blockStart: cursor, blockLength: Int(childLength)) {
-                result.productName = strings["ProductName"]
-                result.fileDescription = strings["FileDescription"]
-                result.companyName = strings["CompanyName"]
-                result.fileVersion = strings["FileVersion"]
+                // Real-world exes genuinely do embed these fields with trailing padding (confirmed
+                // live: UNDERTALE.exe's own ProductName/FileDescription both carry ~60 trailing
+                // spaces) - trim before handing anything back so display code never has to know that.
+                result.productName = strings["ProductName"]?.trimmedNonEmpty
+                result.fileDescription = strings["FileDescription"]?.trimmedNonEmpty
+                result.companyName = strings["CompanyName"]?.trimmedNonEmpty
+                result.fileVersion = strings["FileVersion"]?.trimmedNonEmpty
                 break
             }
             cursor = align4(cursor + Int(childLength))
@@ -195,7 +198,7 @@ enum PEVersionInfoReader {
 
     private static func parseStringFileInfo(_ data: Data, blockStart: Int, blockLength: Int) -> [String: String]? {
         let blockEnd = min(blockStart + blockLength, data.count)
-        var cursor = align4(blockStart + 6 + utf16ByteLength(data, from: blockStart + 6))
+        let cursor = align4(blockStart + 6 + utf16ByteLength(data, from: blockStart + 6))
         guard cursor < blockEnd else { return nil }
 
         // First StringTable child (real files can have more than one - keyed by language/codepage -
@@ -255,5 +258,12 @@ enum PEVersionInfoReader {
             cursor += 2
         }
         return String(decoding: units, as: UTF16.self)
+    }
+}
+
+private extension String {
+    var trimmedNonEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
