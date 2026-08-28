@@ -134,8 +134,17 @@ final class AppModel: ObservableObject {
     /// their executable directly - see `SteamGame.iconExePath` for why. Uses that game's own
     /// settings override if it has one.
     func launchSteamGame(_ game: SteamGame) {
+        launchSteamGame(game, using: config(for: game))
+    }
+
+    /// Same launch, but with a specific config rather than the game's saved override - used by the
+    /// Experiment wizard to try a variant without touching the player's actual saved settings.
+    func launchSteamGame(_ game: SteamGame, using config: GameModeConfig) {
         guard ensureSteamStillInstalled() else { return }
-        launchSteam(target: .game(game.appID), arguments: ["-applaunch", game.appID], displayName: game.name, config: config(for: game))
+        launchSteam(
+            target: .game(game.appID), arguments: ["-applaunch", game.appID], displayName: game.name,
+            config: config, recordOutcomeFor: game.appID
+        )
     }
 
     /// Opens the Steam client itself (no specific game) - e.g. to browse the store or install
@@ -170,7 +179,7 @@ final class AppModel: ObservableObject {
     /// starting up (confirmed in ~/Library/Logs/ExeDock: two full Steam startups five seconds apart).
     /// The `guard` below is a second line of defense against that - it ignores a launch request while
     /// one is already in flight, on top of the UI disabling launch buttons for the same reason.
-    private func launchSteam(target: LaunchTarget, arguments: [String], displayName: String, config: GameModeConfig) {
+    private func launchSteam(target: LaunchTarget, arguments: [String], displayName: String, config: GameModeConfig, recordOutcomeFor appID: String? = nil) {
         guard launchingTarget == nil else { return }
         launchingTarget = target
         statusMessage = "Launching \(displayName)…"
@@ -181,8 +190,10 @@ final class AppModel: ObservableObject {
                     arguments: arguments, extraEnvironment: config.environment, engineName: config.engineName
                 )
                 await MainActor.run { [weak self] in self?.statusMessage = "Launched \(displayName)" }
+                if let appID { LocalOutcomeTracker.record(appID: appID, config: config, launchErrored: false) }
             } catch {
                 await MainActor.run { [weak self] in self?.errorMessage = error.localizedDescription }
+                if let appID { LocalOutcomeTracker.record(appID: appID, config: config, launchErrored: true) }
             }
             // Steam's own window can take a while to appear even after the process starts (first
             // launch, or a self-update - real startups seen taking 10+ seconds) - keep the "in

@@ -3,7 +3,7 @@ import Foundation
 /// The same Wine/engine toggles already present in the user's existing Sikarugir wrapper apps
 /// (confirmed by inspecting Pragmata.app / Steam.app's Info.plist), surfaced for the Steam/game
 /// bottle. These aren't new invented settings - they mirror what Sikarugir already exposes.
-struct GameModeConfig: Equatable, Codable {
+struct GameModeConfig: Equatable, Codable, Hashable {
     var d3dMetal = true
     var dxvk = false
     var dxmt = false
