@@ -57,34 +57,61 @@ actor SteamStoreInfoCache {
         let description = (appData["short_description"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         var headerImagePath: String?
         if let headerImageURLString = appData["header_image"] as? String, let headerImageURL = URL(string: headerImageURLString) {
-            headerImagePath = await downloadHeaderImage(headerImageURL, appID: appID)
+            headerImagePath = await downloadImage(headerImageURL, appID: appID, suffix: "header")
+        }
+        var backgroundImagePath: String?
+        if let backgroundURLString = appData["background_raw"] as? String ?? appData["background"] as? String,
+           let backgroundURL = URL(string: backgroundURLString) {
+            backgroundImagePath = await downloadImage(backgroundURL, appID: appID, suffix: "background")
         }
 
-        guard description?.isEmpty == false || headerImagePath != nil else {
-            DiagnosticsLog.log("Store info [\(appID)]: fetched OK but had neither a description nor header art")
+        let genres = ((appData["genres"] as? [[String: Any]]) ?? []).compactMap { $0["description"] as? String }
+        let categories = ((appData["categories"] as? [[String: Any]]) ?? []).compactMap { $0["description"] as? String }
+        let releaseDate = (appData["release_date"] as? [String: Any])?["date"] as? String
+        let developers = (appData["developers"] as? [String]) ?? []
+        let publishers = (appData["publishers"] as? [String]) ?? []
+        let metacritic = appData["metacritic"] as? [String: Any]
+        let metacriticScore = metacritic?["score"] as? Int
+        let metacriticURL = metacritic?["url"] as? String
+
+        let hasAnyMetadata = description?.isEmpty == false || headerImagePath != nil || !genres.isEmpty
+            || !developers.isEmpty || releaseDate != nil
+        guard hasAnyMetadata else {
+            DiagnosticsLog.log("Store info [\(appID)]: fetched OK but had no usable metadata at all")
             return nil
         }
-        DiagnosticsLog.log("Store info [\(appID)]: OK (description: \(description?.isEmpty == false), headerImage: \(headerImagePath != nil))")
-        return SteamStoreInfo(shortDescription: (description?.isEmpty == false) ? description : nil, headerImagePath: headerImagePath)
+        DiagnosticsLog.log("Store info [\(appID)]: OK (description: \(description?.isEmpty == false), headerImage: \(headerImagePath != nil), genres: \(genres.count), metacritic: \(metacriticScore.map(String.init) ?? "-"))")
+        return SteamStoreInfo(
+            shortDescription: (description?.isEmpty == false) ? description : nil,
+            headerImagePath: headerImagePath,
+            backgroundImagePath: backgroundImagePath,
+            genres: genres,
+            releaseDate: releaseDate,
+            developers: developers,
+            publishers: publishers,
+            metacriticScore: metacriticScore,
+            metacriticURL: metacriticURL,
+            categories: categories
+        )
     }
 
-    private func downloadHeaderImage(_ url: URL, appID: String) async -> String? {
+    private func downloadImage(_ url: URL, appID: String, suffix: String) async -> String? {
         try? FileManager.default.createDirectory(atPath: cacheDir, withIntermediateDirectories: true)
-        let destination = (cacheDir as NSString).appendingPathComponent("\(appID)-header.jpg")
+        let destination = (cacheDir as NSString).appendingPathComponent("\(appID)-\(suffix).jpg")
         let downloadResult: (url: URL, response: URLResponse)
         do {
             downloadResult = try await URLSession.shared.download(from: url)
         } catch {
-            DiagnosticsLog.log("Store info [\(appID)]: header art download failed - \(error.localizedDescription)")
+            DiagnosticsLog.log("Store info [\(appID)]: \(suffix) art download failed - \(error.localizedDescription)")
             return nil
         }
         guard let http = downloadResult.response as? HTTPURLResponse, http.statusCode == 200 else {
-            DiagnosticsLog.log("Store info [\(appID)]: header art request returned a bad HTTP status")
+            DiagnosticsLog.log("Store info [\(appID)]: \(suffix) art request returned a bad HTTP status")
             return nil
         }
         try? FileManager.default.removeItem(atPath: destination)
         guard (try? FileManager.default.moveItem(at: downloadResult.url, to: URL(fileURLWithPath: destination))) != nil else {
-            DiagnosticsLog.log("Store info [\(appID)]: couldn't move downloaded header art into place")
+            DiagnosticsLog.log("Store info [\(appID)]: couldn't move downloaded \(suffix) art into place")
             return nil
         }
         return destination

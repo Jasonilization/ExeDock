@@ -11,6 +11,7 @@ struct GameModeView: View {
     @LocalState private var sortOption: GameSortOption = .name
     @LocalState private var launchOverlayGame: SteamGame?
     @LocalState private var showingControllerMode = false
+    @LocalState private var detailGame: SteamGame?
 
     private enum GameSortOption: String, CaseIterable, Identifiable {
         case name = "Name"
@@ -88,7 +89,6 @@ struct GameModeView: View {
                 if controllerObserver.isConnected && !controllerObserver.bannerDismissed {
                     controllerBanner
                 }
-                steamLaunchTile
                 Divider()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
@@ -97,6 +97,17 @@ struct GameModeView: View {
                     }
                     .padding(24)
                 }
+            }
+
+            if let detailGame {
+                GameDetailView(game: detailGame, isAdvancedMode: isAdvancedMode) {
+                    self.detailGame = nil
+                } onLaunch: {
+                    self.detailGame = nil
+                    launchOverlayGame = detailGame
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                .zIndex(1)
             }
 
             if let launchOverlayGame {
@@ -115,6 +126,7 @@ struct GameModeView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: model.launchingTarget)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: launchOverlayGame?.appID)
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: detailGame?.appID)
         .animation(.easeInOut(duration: 0.4), value: themedGame?.appID)
         .animation(.easeInOut(duration: 0.25), value: showingControllerMode)
         .sheet(isPresented: $showingSettingsSheet) {
@@ -179,6 +191,7 @@ struct GameModeView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            steamHeaderIcon
             Button {
                 model.refreshSteamGames()
                 model.refreshSteamProfile()
@@ -199,53 +212,50 @@ struct GameModeView: View {
         .padding(22)
     }
 
-    /// The big, hard-to-miss way to open Steam itself - double-click, the same gesture as opening
-    /// anything else on a Mac. Uses Steam's own real icon when the native Mac Steam.app is present
-    /// on this machine (legitimately already installed by the user, same as how AppIconProvider
-    /// reads any other already-installed app's icon) - falling back to an in-house glyph otherwise,
-    /// since NSWorkspace can't extract an icon from a .exe buried in a private, never-Finder-indexed
-    /// Wine bottle. Shows exactly one spinner, right on the icon, while launching.
+    /// The way to open Steam itself - double-click, the same gesture as opening anything else on a
+    /// Mac. Lives as a small icon up in the header now (moved off a big centered tile that used to
+    /// take up nearly half the screen, per live feedback - "the steam icon just stay in the top
+    /// right where you can minimalize it"). Uses Steam's own real icon when the native Mac Steam.app
+    /// is present on this machine (legitimately already installed by the user, same as how
+    /// AppIconProvider reads any other already-installed app's icon) - falling back to an in-house
+    /// glyph otherwise, since NSWorkspace can't extract an icon from a .exe buried in a private,
+    /// never-Finder-indexed Wine bottle. Shows exactly one spinner, right on the icon, while
+    /// launching.
     private static let nativeSteamAppPath = "/Applications/Steam.app"
 
-    private var steamLaunchTile: some View {
+    private var steamHeaderIcon: some View {
         let isLaunching = model.launchingTarget == .steam
-        return VStack(spacing: 10) {
-            ZStack {
-                steamIcon
-                    .opacity(isLaunching ? 0.3 : 1)
-                if isLaunching {
-                    ProgressView().controlSize(.large)
-                }
+        return ZStack {
+            steamIcon(size: 44, cornerRadius: 11)
+                .opacity(isLaunching ? 0.3 : 1)
+            if isLaunching {
+                ProgressView().controlSize(.small)
             }
-            .frame(width: 160, height: 160)
-            .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
-            .contentShape(RoundedRectangle(cornerRadius: 30))
-            // No .pressPush()/other gesture-based press effect here on purpose - a real bug,
-            // found live: a simultaneous zero-distance DragGesture (which is what that press
-            // effect used to detect "pressed") competing with .onTapGesture(count: 2) on the same
-            // view could silently swallow the double-click recognition entirely, so double-
-            // clicking did nothing at all - no spinner, no launch. The isLaunching-driven
-            // opacity/spinner below is the only feedback this needs.
-            .onTapGesture(count: 2) {
-                model.openSteamClient()
-            }
-            .allowsHitTesting(model.launchingTarget == nil)
-            Text(isLaunching ? "Launching Steam…" : "Double-click to open Steam")
-                .font(.title3)
-                .foregroundStyle(.secondary)
         }
-        .padding(.bottom, 20)
-        .frame(maxWidth: .infinity)
+        .frame(width: 44, height: 44)
+        .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
+        .contentShape(RoundedRectangle(cornerRadius: 11))
+        // No .pressPush()/other gesture-based press effect here on purpose - a real bug, found
+        // live: a simultaneous zero-distance DragGesture (which is what that press effect used to
+        // detect "pressed") competing with .onTapGesture(count: 2) on the same view could silently
+        // swallow the double-click recognition entirely, so double-clicking did nothing at all - no
+        // spinner, no launch. The isLaunching-driven opacity/spinner above is the only feedback
+        // this needs.
+        .onTapGesture(count: 2) {
+            model.openSteamClient()
+        }
+        .allowsHitTesting(model.launchingTarget == nil)
+        .help(isLaunching ? "Launching Steam…" : "Double-click to open Steam")
     }
 
     @ViewBuilder
-    private var steamIcon: some View {
+    private func steamIcon(size: CGFloat, cornerRadius: CGFloat) -> some View {
         if FileManager.default.fileExists(atPath: Self.nativeSteamAppPath) {
             Image(nsImage: AppIconProvider.icon(forPath: Self.nativeSteamAppPath))
                 .resizable()
-                .frame(width: 160, height: 160)
+                .frame(width: size, height: size)
         } else {
-            RoundedRectangle(cornerRadius: 30)
+            RoundedRectangle(cornerRadius: cornerRadius)
                 .fill(
                     LinearGradient(
                         colors: [Color(red: 0.53, green: 0.33, blue: 0.96), Color(red: 0.16, green: 0.18, blue: 0.52)],
@@ -254,10 +264,10 @@ struct GameModeView: View {
                 )
                 .overlay(
                     Image(systemName: "gamecontroller.fill")
-                        .font(.system(size: 64, weight: .medium))
+                        .font(.system(size: size * 0.4, weight: .medium))
                         .foregroundStyle(.white)
                 )
-                .overlay(RoundedRectangle(cornerRadius: 30).strokeBorder(.white.opacity(0.15), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.white.opacity(0.15), lineWidth: 1))
         }
     }
 
@@ -328,6 +338,8 @@ struct GameModeView: View {
                 ForEach(filteredGames) { game in
                     GameCardView(game: game, isAdvancedMode: isAdvancedMode) {
                         launchOverlayGame = game
+                    } onOpenDetail: {
+                        detailGame = game
                     }
                 }
             }
@@ -359,6 +371,7 @@ private struct GameCardView: View {
     let game: SteamGame
     let isAdvancedMode: Bool
     let onLaunch: () -> Void
+    let onOpenDetail: () -> Void
     @LocalState private var storeInfo: SteamStoreInfo?
     @LocalState private var showingSettings = false
     @LocalState private var isHoveringArtwork = false
@@ -374,6 +387,7 @@ private struct GameCardView: View {
                     Text(game.name)
                         .font(.title3.weight(.semibold))
                         .lineLimit(1)
+                        .help(developerHelpText)
                     Spacer()
                     if isAdvancedMode {
                         Button {
@@ -399,29 +413,38 @@ private struct GameCardView: View {
                 if let runningInfo {
                     runningBadge(runningInfo)
                 } else {
-                    Button {
-                        onLaunch()
-                        model.launchSteamGame(game)
-                    } label: {
-                        if model.launchingTarget == .game(game.appID) {
-                            HStack(spacing: 8) {
-                                ProgressView().controlSize(.small).tint(.white)
-                                Text("Launching…")
-                            }
-                        } else {
-                            Text("Launch")
-                        }
-                    }
-                    .buttonStyle(.big)
-                    .disabled(model.launchingTarget != nil)
-                    .padding(.top, 4)
+                    openDetailHint
                 }
             }
             .padding(16)
         }
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.quaternary))
+        // Tapping the card opens the full Game Detail view rather than launching straight away -
+        // "it should go into full screen before you can launch," per live feedback, so the grid
+        // card itself is just an entry point now. A plain single-tap gesture on this container is
+        // safe alongside the gearshape Button above (SwiftUI routes a tap within a nested Button's
+        // own bounds to that button first) - this is a different situation from the earlier
+        // Steam-tile bug, which was specifically a *simultaneous* zero-distance DragGesture
+        // competing with a double-tap recognizer on the very same view.
+        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .onTapGesture { onOpenDetail() }
         .contextMenu {
+            Button {
+                onOpenDetail()
+            } label: {
+                Label("View Details", systemImage: "info.circle")
+            }
+            if runningInfo == nil {
+                Button {
+                    onLaunch()
+                    model.launchSteamGame(game)
+                } label: {
+                    Label("Launch", systemImage: "play.fill")
+                }
+                .disabled(model.launchingTarget != nil)
+            }
+            Divider()
             Button {
                 model.revealInFinder(installFolderPath)
             } label: {
@@ -455,6 +478,12 @@ private struct GameCardView: View {
 
     private var detailsRow: some View {
         HStack(spacing: 8) {
+            if let score = storeInfo?.metacriticScore {
+                metacriticBadge(score)
+            }
+            if let genre = storeInfo?.genres.first {
+                Text(genre)
+            }
             if let size = game.sizeOnDisk {
                 Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
             }
@@ -465,6 +494,32 @@ private struct GameCardView: View {
         }
         .font(.caption2)
         .foregroundStyle(.tertiary)
+    }
+
+    /// Steam's own color convention: green for "generally favorable," yellow for "mixed," red for
+    /// "generally unfavorable" - the same ranges Metacritic/Steam use on their own store pages.
+    private func metacriticBadge(_ score: Int) -> some View {
+        Text("\(score)")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(metacriticColor(score), in: RoundedRectangle(cornerRadius: 4))
+    }
+
+    private func metacriticColor(_ score: Int) -> Color {
+        switch score {
+        case 75...: return .green
+        case 50..<75: return .yellow
+        default: return .red
+        }
+    }
+
+    private var developerHelpText: String {
+        guard let storeInfo, !storeInfo.developers.isEmpty else { return game.name }
+        var parts = ["By \(storeInfo.developers.joined(separator: ", "))"]
+        if let releaseDate = storeInfo.releaseDate { parts.append("Released \(releaseDate)") }
+        return parts.joined(separator: " · ")
     }
 
     private var engineBadgeText: String {
@@ -495,6 +550,20 @@ private struct GameCardView: View {
         return hours > 0 ? "\(hours)h \(remainder)m" : "\(remainder)m"
     }
 
+    /// Replaces the old inline Launch button - launching now only happens from the full Game Detail
+    /// view, reached by tapping the card, so this is just a quiet affordance instead of an action.
+    private var openDetailHint: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+            Text("Click for details")
+        }
+        .font(.callout.weight(.medium))
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+    }
+
     private var artwork: some View {
         Group {
             if let headerPath = storeInfo?.headerImagePath, let image = LocalImageCache.image(atPath: headerPath) {
@@ -516,6 +585,267 @@ private struct GameCardView: View {
         .frame(height: 140)
         .clipped()
         .onHover { isHoveringArtwork = $0 }
+    }
+}
+
+// MARK: - Game detail
+
+/// The full "click into a game" detail view - a first-class, Steam-store-like page (big art, genre,
+/// rating, developer, release date, description) reached by tapping a card. Launching now happens
+/// from here rather than directly off the small grid card - "it should go into full screen before
+/// you can launch," per live feedback. Not a real `matchedGeometryEffect` hero animation from the
+/// exact card tapped, for the same reason `LaunchOverlayView` doesn't attempt one either:
+/// `GameCardView` lives inside a `LazyVGrid`/`ScrollView`, where an off-screen card may not have a
+/// measured frame to animate from. A scale+fade transition (applied by the caller, matching
+/// `LaunchOverlayView`'s own) reads as the card "growing" into this view without that risk.
+struct GameDetailView: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject private var runningTracker = RunningGameTracker.shared
+    let game: SteamGame
+    let isAdvancedMode: Bool
+    let onClose: () -> Void
+    let onLaunch: () -> Void
+    @LocalState private var storeInfo: SteamStoreInfo?
+    @LocalState private var showingSettings = false
+
+    private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.appID] }
+    private var hasCustomSettings: Bool { model.perGameConfigs[game.appID] != nil }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            backdrop
+            VStack(alignment: .leading, spacing: 0) {
+                closeButton
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        header
+                        if let description = storeInfo?.shortDescription {
+                            Text(description)
+                                .font(.body)
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
+                        metaRow
+                        actionRow
+                    }
+                    .padding(32)
+                    .frame(maxWidth: 720, alignment: .leading)
+                }
+            }
+        }
+        .colorScheme(.dark)
+        .task(id: game.appID) {
+            storeInfo = await SteamStoreInfoCache.shared.info(for: game.appID)
+        }
+        .onExitCommand { onClose() }
+    }
+
+    private var closeButton: some View {
+        Button {
+            onClose()
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 28))
+                .foregroundStyle(.white, .black.opacity(0.4))
+        }
+        .buttonStyle(.plain)
+        .padding(24)
+        .keyboardShortcut(.cancelAction)
+    }
+
+    @ViewBuilder
+    private var backdrop: some View {
+        if let path = storeInfo?.backgroundImagePath ?? storeInfo?.headerImagePath, let image = LocalImageCache.image(atPath: path) {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .blur(radius: 50)
+                .overlay(Color.black.opacity(0.6))
+                .ignoresSafeArea()
+        } else {
+            LinearGradient(colors: [Color.accentColor.opacity(0.5), .black], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            headerArt
+            Text(game.name)
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(.white)
+            if storeInfo?.metacriticScore != nil || !(storeInfo?.genres.isEmpty ?? true) {
+                HStack(spacing: 10) {
+                    if let score = storeInfo?.metacriticScore {
+                        metacriticBadge(score)
+                    }
+                    ForEach(storeInfo?.genres.prefix(3) ?? [], id: \.self) { genre in
+                        tag(genre)
+                    }
+                }
+            }
+            if !subtitleLine.isEmpty {
+                Text(subtitleLine)
+                    .font(.callout)
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var headerArt: some View {
+        if let path = storeInfo?.headerImagePath, let image = LocalImageCache.image(atPath: path) {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(height: 200)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.15)))
+        }
+    }
+
+    /// Same green/yellow/red convention Steam's own store pages use for Metacritic scores.
+    private func metacriticBadge(_ score: Int) -> some View {
+        Text("\(score)")
+            .font(.callout.weight(.bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(metacriticColor(score), in: RoundedRectangle(cornerRadius: 5))
+    }
+
+    private func metacriticColor(_ score: Int) -> Color {
+        switch score {
+        case 75...: return .green
+        case 50..<75: return .yellow
+        default: return .red
+        }
+    }
+
+    private func tag(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.white.opacity(0.8))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
+    }
+
+    private var subtitleLine: String {
+        var parts: [String] = []
+        if let developers = storeInfo?.developers, !developers.isEmpty {
+            parts.append("By \(developers.joined(separator: ", "))")
+        }
+        if let releaseDate = storeInfo?.releaseDate {
+            parts.append("Released \(releaseDate)")
+        }
+        return parts.joined(separator: "  ·  ")
+    }
+
+    private var metaRow: some View {
+        HStack(spacing: 28) {
+            if let size = game.sizeOnDisk {
+                metaItem("Size", ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+            }
+            if let build = game.buildID {
+                metaItem("Build", build)
+            }
+            metaItem("Engine", engineBadgeText)
+            if let publisher = storeInfo?.publishers.first, publisher != storeInfo?.developers.first {
+                metaItem("Publisher", publisher)
+            }
+        }
+    }
+
+    private func metaItem(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.45))
+            Text(value)
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.white.opacity(0.9))
+        }
+    }
+
+    private var engineBadgeText: String {
+        let config = model.config(for: game)
+        return config.d3dMetal ? "D3DMetal" : (config.dxvk ? "DXVK" : (config.dxmt ? "DXMT" : "Default"))
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 12) {
+            if let runningInfo {
+                runningBadge(runningInfo)
+            } else {
+                Button {
+                    onLaunch()
+                    model.launchSteamGame(game)
+                } label: {
+                    if model.launchingTarget == .game(game.appID) {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small).tint(.white)
+                            Text("Launching…")
+                        }
+                    } else {
+                        Label("Launch", systemImage: "play.fill")
+                    }
+                }
+                .buttonStyle(.big)
+                .disabled(model.launchingTarget != nil)
+                .frame(maxWidth: 220)
+            }
+            if isAdvancedMode {
+                Button {
+                    showingSettings = true
+                } label: {
+                    Label(hasCustomSettings ? "Custom Settings" : "Settings", systemImage: hasCustomSettings ? "slider.horizontal.3" : "gearshape")
+                }
+                .buttonStyle(.bordered)
+                .popover(isPresented: $showingSettings) {
+                    GameSettingsPopover(game: game)
+                }
+            }
+            Button {
+                model.revealInFinder(installFolderPath)
+            } label: {
+                Label("Reveal", systemImage: "folder")
+            }
+            .buttonStyle(.bordered)
+            Button {
+                model.openStorePage(for: game)
+            } label: {
+                Label("Store Page", systemImage: "safari")
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(.top, 8)
+    }
+
+    private func runningBadge(_ info: RunningProcessInfo) -> some View {
+        TimelineView(.periodic(from: info.startedAt, by: 60)) { context in
+            HStack(spacing: 8) {
+                Circle().fill(.green).frame(width: 8, height: 8)
+                Text("Running \(elapsedString(from: info.startedAt, to: context.date))")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    private func elapsedString(from start: Date, to now: Date) -> String {
+        let minutes = max(0, Int(now.timeIntervalSince(start) / 60))
+        let hours = minutes / 60
+        let remainder = minutes % 60
+        return hours > 0 ? "\(hours)h \(remainder)m" : "\(remainder)m"
+    }
+
+    private var installFolderPath: String {
+        (SteamInstaller.steamBottle.driveCPath as NSString)
+            .appendingPathComponent("Program Files (x86)/Steam/steamapps/common")
+            .appending("/\(game.installDir)")
     }
 }
 

@@ -59,6 +59,19 @@ final class BottleManager {
         guard fm.fileExists(atPath: systemRegPath) else {
             throw EngineError.extractionFailed("Wine's setup didn't finish in time. Details were saved to \(logPath).")
         }
+
+        // Best-effort and fire-and-forget on purpose: a freshly-created bottle should quietly pick
+        // up the common runtime components (DirectX, C++, fonts) real games often need, with no
+        // button and no extra step for anyone to think about - but this must never block or fail
+        // bottle setup itself. If it doesn't work (offline, etc.) the bottle is still perfectly
+        // usable; it just won't have these extras until the next successful attempt.
+        Task.detached(priority: .utility) {
+            do {
+                try await WinetricksRunner.runDefaultVerbs(in: bottle) { _ in }
+            } catch {
+                DiagnosticsLog.log("Runtime components for \(bottle.name): \(error.localizedDescription)")
+            }
+        }
     }
 
     /// Discovers Sikarugir wrapper apps on disk (read-only) so their bottles can be browsed and their
