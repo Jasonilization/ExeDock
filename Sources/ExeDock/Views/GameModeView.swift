@@ -3,10 +3,14 @@ import AppKit
 
 struct GameModeView: View {
     @EnvironmentObject private var model: AppModel
+    @ObservedObject private var runningTracker = RunningGameTracker.shared
+    @ObservedObject private var controllerObserver = ControllerObserver.shared
     @AppStorage("com.exedock.advancedMode") private var isAdvancedMode = false
     @LocalState private var search = ""
     @LocalState private var showingSettingsSheet = false
     @LocalState private var sortOption: GameSortOption = .name
+    @LocalState private var launchOverlayGame: SteamGame?
+    @LocalState private var showingControllerMode = false
 
     private enum GameSortOption: String, CaseIterable, Identifiable {
         case name = "Name"
@@ -61,23 +65,107 @@ struct GameModeView: View {
 
     // MARK: - Dashboard
 
+    /// The game to theme the dashboard's own backdrop after - not hover/selection (constantly
+    /// re-theming while just browsing the grid would be distracting), but whichever game is
+    /// actually running right now, so the effect means something. The launch overlay covers this at
+    /// full intensity while starting up; this is the subtler version that lingers behind the normal
+    /// dashboard once that overlay dismisses.
+    private var themedGame: SteamGame? {
+        guard let runningAppID = runningTracker.runningGames.keys.first else { return nil }
+        return model.steamGames.first { $0.appID == runningAppID }
+    }
+
     private var dashboard: some View {
-        VStack(spacing: 0) {
-            header
-            steamLaunchTile
-            Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    searchBar
-                    gamesGrid
+        ZStack {
+            if let themedGame {
+                DashboardBackdropView(game: themedGame)
+                    .transition(.opacity)
+                    .ignoresSafeArea()
+            }
+
+            VStack(spacing: 0) {
+                header
+                if controllerObserver.isConnected && !controllerObserver.bannerDismissed {
+                    controllerBanner
                 }
-                .padding(24)
+                steamLaunchTile
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        searchBar
+                        gamesGrid
+                    }
+                    .padding(24)
+                }
+            }
+
+            if let launchOverlayGame {
+                LaunchOverlayView(game: launchOverlayGame, config: model.config(for: launchOverlayGame))
+                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                    .zIndex(1)
+            }
+
+            if showingControllerMode {
+                ControllerModeView {
+                    showingControllerMode = false
+                }
+                .transition(.opacity)
+                .zIndex(2)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: model.launchingTarget)
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: launchOverlayGame?.appID)
+        .animation(.easeInOut(duration: 0.4), value: themedGame?.appID)
+        .animation(.easeInOut(duration: 0.25), value: showingControllerMode)
         .sheet(isPresented: $showingSettingsSheet) {
             DefaultSettingsSheet(isAdvancedMode: $isAdvancedMode)
         }
+        .onChange(of: model.steamGames) { games in
+            runningTracker.syncWatchedGames(games)
+        }
+        .onAppear {
+            runningTracker.syncWatchedGames(model.steamGames)
+        }
+        .onChange(of: runningTracker.runningGames) { running in
+            // The overlay's honest dismiss signal: the game process actually showed up. Playdock
+            // can't know when a Steam-mediated game *closes* (Steam owns that child process), so
+            // there's no equivalent "and disappears" trigger here - see RunningGameTracker's own
+            // doc comment for why this is a best-effort heuristic, not a real IPC hook.
+            if let launchOverlayGame, running[launchOverlayGame.appID] != nil {
+                self.launchOverlayGame = nil
+            }
+        }
+        .onChange(of: launchOverlayGame?.appID) { appID in
+            guard let appID else { return }
+            Task {
+                try? await Task.sleep(for: .seconds(20))
+                if launchOverlayGame?.appID == appID {
+                    launchOverlayGame = nil
+                }
+            }
+        }
+    }
+
+    private var controllerBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "gamecontroller.fill")
+            Text("Controller connected")
+            Spacer()
+            Button("Enter Controller Mode") {
+                showingControllerMode = true
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            Button {
+                controllerObserver.bannerDismissed = true
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+        .background(Color.accentColor.opacity(0.12))
     }
 
     private var header: some View {
@@ -233,7 +321,9 @@ struct GameModeView: View {
         } else {
             LazyVGrid(columns: gridColumns, spacing: 20) {
                 ForEach(filteredGames) { game in
-                    GameCardView(game: game, isAdvancedMode: isAdvancedMode)
+                    GameCardView(game: game, isAdvancedMode: isAdvancedMode) {
+                        launchOverlayGame = game
+                    }
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: model.steamGames)
@@ -260,12 +350,16 @@ struct GameModeView: View {
 
 private struct GameCardView: View {
     @EnvironmentObject private var model: AppModel
+    @ObservedObject private var runningTracker = RunningGameTracker.shared
     let game: SteamGame
     let isAdvancedMode: Bool
+    let onLaunch: () -> Void
     @LocalState private var storeInfo: SteamStoreInfo?
     @LocalState private var showingSettings = false
+    @LocalState private var isHoveringArtwork = false
 
     private var hasCustomSettings: Bool { model.perGameConfigs[game.appID] != nil }
+    private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.appID] }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -297,21 +391,26 @@ private struct GameCardView: View {
                         .lineLimit(2)
                 }
                 detailsRow
-                Button {
-                    model.launchSteamGame(game)
-                } label: {
-                    if model.launchingTarget == .game(game.appID) {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small).tint(.white)
-                            Text("Launching…")
+                if let runningInfo {
+                    runningBadge(runningInfo)
+                } else {
+                    Button {
+                        onLaunch()
+                        model.launchSteamGame(game)
+                    } label: {
+                        if model.launchingTarget == .game(game.appID) {
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small).tint(.white)
+                                Text("Launching…")
+                            }
+                        } else {
+                            Text("Launch")
                         }
-                    } else {
-                        Text("Launch")
                     }
+                    .buttonStyle(.big)
+                    .disabled(model.launchingTarget != nil)
+                    .padding(.top, 4)
                 }
-                .buttonStyle(.big)
-                .disabled(model.launchingTarget != nil)
-                .padding(.top, 4)
             }
             .padding(16)
         }
@@ -357,9 +456,38 @@ private struct GameCardView: View {
             if let build = game.buildID {
                 Text("Build \(build)")
             }
+            Text(engineBadgeText)
         }
         .font(.caption2)
         .foregroundStyle(.tertiary)
+    }
+
+    private var engineBadgeText: String {
+        let config = model.config(for: game)
+        return config.d3dMetal ? "D3DMetal" : (config.dxvk ? "DXVK" : (config.dxmt ? "DXMT" : "Default"))
+    }
+
+    /// Replaces the Launch button while `RunningGameTracker` sees this game's process - a
+    /// minute-granularity elapsed time (no need for per-second ticking on a "how long has this been
+    /// running" label), ticked by `TimelineView` rather than a manually managed Timer.
+    private func runningBadge(_ info: RunningProcessInfo) -> some View {
+        TimelineView(.periodic(from: info.startedAt, by: 60)) { context in
+            HStack(spacing: 8) {
+                Circle().fill(.green).frame(width: 8, height: 8)
+                Text("Running \(elapsedString(from: info.startedAt, to: context.date))")
+                    .font(.callout.weight(.medium))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
+        }
+    }
+
+    private func elapsedString(from start: Date, to now: Date) -> String {
+        let minutes = max(0, Int(now.timeIntervalSince(start) / 60))
+        let hours = minutes / 60
+        let remainder = minutes % 60
+        return hours > 0 ? "\(hours)h \(remainder)m" : "\(remainder)m"
     }
 
     private var artwork: some View {
@@ -368,6 +496,8 @@ private struct GameCardView: View {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
+                    .scaleEffect(isHoveringArtwork ? 1.06 : 1.0)
+                    .animation(.easeOut(duration: 0.3), value: isHoveringArtwork)
             } else {
                 // Not a real exe-icon lookup on purpose - NSWorkspace can't extract one from a file
                 // buried in a private, never-Finder-indexed Wine bottle, so it just renders blank.
@@ -380,6 +510,100 @@ private struct GameCardView: View {
         }
         .frame(height: 140)
         .clipped()
+        .onHover { isHoveringArtwork = $0 }
+    }
+}
+
+// MARK: - Dashboard theming
+
+/// A quiet, blurred version of the currently-running game's header art behind the whole dashboard -
+/// not the macOS desktop, just this window's own background. Subtler than `LaunchOverlayView`
+/// (which is the same idea at full intensity while a game is starting up) so the actual dashboard
+/// content on top stays perfectly readable.
+private struct DashboardBackdropView: View {
+    let game: SteamGame
+    @LocalState private var headerImagePath: String?
+
+    var body: some View {
+        Group {
+            if let headerImagePath, let image = LocalImageCache.image(atPath: headerImagePath) {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .blur(radius: 70)
+                    .overlay(.background.opacity(0.82))
+            } else {
+                Color.clear
+            }
+        }
+        .task(id: game.appID) {
+            headerImagePath = await SteamStoreInfoCache.shared.info(for: game.appID)?.headerImagePath
+        }
+    }
+}
+
+// MARK: - Launch overlay
+
+/// The full-window "WHOOSH" launch takeover: the game's own header art fills the screen while it
+/// starts. Deliberately not a true `matchedGeometryEffect` hero transition from the exact card that
+/// was clicked - `GameCardView` lives inside a `LazyVGrid`/`ScrollView`, where a card that hasn't
+/// been scrolled into view yet may not have a measured frame for the effect to animate from, which
+/// risks a broken-looking animation for a real but relatively rare case. A scale+fade transition
+/// (applied by the caller) gets the same "whoosh" feeling reliably instead.
+private struct LaunchOverlayView: View {
+    let game: SteamGame
+    let config: GameModeConfig
+    @LocalState private var headerImagePath: String?
+
+    var body: some View {
+        ZStack {
+            background
+            VStack(spacing: 14) {
+                Spacer()
+                Text(game.name)
+                    .font(.system(size: 34, weight: .bold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                LoadingDotsView(message: "LAUNCHING…")
+                Text(engineSummary)
+                    .font(.callout)
+                    .foregroundStyle(.white.opacity(0.75))
+                Spacer()
+            }
+        }
+        // This overlay's background is always a dark blurred image regardless of system appearance,
+        // so force dark-mode semantic colors (.secondary etc. inside LoadingDotsView) rather than
+        // risking low-contrast mid-gray text if the system happens to be in light mode.
+        .colorScheme(.dark)
+        .task {
+            headerImagePath = await SteamStoreInfoCache.shared.info(for: game.appID)?.headerImagePath
+        }
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        if let headerImagePath, let image = LocalImageCache.image(atPath: headerImagePath) {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .blur(radius: 40)
+                .overlay(Color.black.opacity(0.55))
+        } else {
+            LinearGradient(colors: [Color.accentColor.opacity(0.5), .black], startPoint: .top, endPoint: .bottom)
+        }
+    }
+
+    private var engineSummary: String {
+        var parts = [config.engineName ?? "Sikarugir"]
+        if config.d3dMetal {
+            parts.append("D3DMetal")
+        } else if config.dxvk {
+            parts.append("DXVK")
+        } else if config.dxmt {
+            parts.append("DXMT")
+        }
+        return parts.joined(separator: " • ")
     }
 }
 
@@ -475,6 +699,7 @@ private struct DefaultSettingsSheet: View {
 private struct GameSettingsPopover: View {
     @EnvironmentObject private var model: AppModel
     let game: SteamGame
+    @LocalState private var showingExperiment = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -484,15 +709,33 @@ private struct GameSettingsPopover: View {
                 .padding(14)
             Divider()
             Form {
+                FindBestConfigurationSection(game: game)
                 GameSettingsFields(config: configBinding)
                 Button("Use Default Settings") {
                     model.setOverride(nil, for: game)
                 }
                 .disabled(model.perGameConfigs[game.appID] == nil)
+
+                Section {
+                    Button {
+                        showingExperiment = true
+                    } label: {
+                        Label("Experiment", systemImage: "flask")
+                    }
+                } footer: {
+                    Text("Try a few engine/graphics combinations one at a time and see which actually works.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                InspectSection(game: game)
             }
             .formStyle(.grouped)
         }
-        .frame(width: 340, height: 460)
+        .frame(width: 380, height: 660)
+        .sheet(isPresented: $showingExperiment) {
+            ExperimentSheet(game: game)
+        }
     }
 
     private var configBinding: Binding<GameModeConfig> {
@@ -500,6 +743,190 @@ private struct GameSettingsPopover: View {
             get: { model.perGameConfigs[game.appID] ?? model.gameModeConfig },
             set: { model.setOverride($0, for: game) }
         )
+    }
+}
+
+// MARK: - Find Best Configuration
+
+/// "🔎 Find Best Configuration" - pulls public compatibility evidence (AppleGamingWiki, GitHub) plus
+/// this Mac's own launch history through `CompatibilityFinder`, and shows the aggregated result.
+/// Never applies anything by itself - Apply is always a distinct, explicit tap that goes through the
+/// existing `model.setOverride`, the same mechanism the manual settings below already use.
+private struct FindBestConfigurationSection: View {
+    @EnvironmentObject private var model: AppModel
+    let game: SteamGame
+    @LocalState private var recommendation: CompatibilityRecommendation?
+    @LocalState private var isSearching = false
+    @LocalState private var showingEvidence = false
+
+    var body: some View {
+        Section {
+            if isSearching {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Searching AppleGamingWiki, GitHub…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let recommendation {
+                resultView(recommendation)
+            } else {
+                Button {
+                    search(forceRefresh: false)
+                } label: {
+                    Label("Find Best Configuration", systemImage: "magnifyingglass.circle")
+                }
+            }
+        } header: {
+            Text("Recommended Settings")
+        } footer: {
+            Text("Looks at public compatibility reports and this Mac's own launch history for this game. Nothing is ever applied automatically - you choose.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func resultView(_ recommendation: CompatibilityRecommendation) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("\(recommendation.confidence.indicator) \(recommendation.confidence.label)")
+                    .font(.callout).bold()
+                Spacer()
+                Button {
+                    search(forceRefresh: true)
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .help("Refresh")
+            }
+
+            if recommendation.confidence == .none {
+                Text("Nothing was changed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Supported by \(independentSourceCount(recommendation)) independent report(s)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(summary(of: recommendation.recommendedSettings))
+                    .font(.callout)
+            }
+
+            if !recommendation.reports.isEmpty {
+                Button(showingEvidence ? "Hide Evidence" : "View Evidence") {
+                    showingEvidence.toggle()
+                }
+                .buttonStyle(.borderless)
+                if showingEvidence {
+                    evidenceList(recommendation.reports)
+                }
+            }
+
+            if recommendation.recommendedSettings != nil {
+                Button("Apply") {
+                    model.setOverride(recommendation.applied(onto: model.config(for: game)), for: game)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func evidenceList(_ reports: [CompatibilityReport]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(reports) { report in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(report.sourceName).font(.caption).bold()
+                    Text(report.excerpt).font(.caption2).foregroundStyle(.secondary)
+                    if let url = URL(string: report.sourceURL), !report.sourceURL.isEmpty {
+                        Link(report.sourceURL, destination: url).font(.caption2)
+                    }
+                }
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func independentSourceCount(_ recommendation: CompatibilityRecommendation) -> Int {
+        Set(recommendation.reports.map(\.sourceName)).count
+    }
+
+    private func summary(of settings: DetectedSettings?) -> String {
+        guard let settings else { return "No changes to your current settings." }
+        var parts: [String] = []
+        if let v = settings.d3dMetal { parts.append("D3DMetal \(v ? "on" : "off")") }
+        if let v = settings.dxvk { parts.append("DXVK \(v ? "on" : "off")") }
+        if let v = settings.dxmt { parts.append("DXMT \(v ? "on" : "off")") }
+        if let v = settings.moltenVKCX { parts.append("MoltenVK CX \(v ? "on" : "off")") }
+        if let v = settings.wineESync { parts.append("ESync \(v ? "on" : "off")") }
+        if let v = settings.wineMSync { parts.append("MSync \(v ? "on" : "off")") }
+        return parts.isEmpty ? "No changes to your current settings." : parts.joined(separator: " · ")
+    }
+
+    private func search(forceRefresh: Bool) {
+        isSearching = true
+        Task {
+            let result = await CompatibilityFinder.shared.recommendation(for: game, forceRefresh: forceRefresh)
+            await MainActor.run {
+                recommendation = result
+                isSearching = false
+            }
+        }
+    }
+}
+
+// MARK: - Inspect
+
+/// "🔬 Inspect" - a read-only assembly of data Playdock already has, plus `RunningGameTracker` for
+/// the live PID. No new data sources here, just a presentation layer.
+private struct InspectSection: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject private var runningTracker = RunningGameTracker.shared
+    let game: SteamGame
+
+    private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.appID] }
+    private var config: GameModeConfig { model.config(for: game) }
+
+    var body: some View {
+        Section("Inspect") {
+            DisclosureGroup("Process") {
+                if let runningInfo {
+                    LabeledContent("Status", value: "Running (PID \(runningInfo.pid))")
+                    LabeledContent("Started", value: runningInfo.startedAt.formatted(date: .omitted, time: .shortened))
+                } else {
+                    LabeledContent("Status", value: "Not running")
+                }
+            }
+            DisclosureGroup("Wine") {
+                LabeledContent("Engine", value: config.engineName ?? "Auto (recommended)")
+            }
+            DisclosureGroup("Graphics") {
+                LabeledContent("D3DMetal", value: config.d3dMetal ? "On" : "Off")
+                LabeledContent("DXVK", value: config.dxvk ? "On" : "Off")
+                LabeledContent("DXMT", value: config.dxmt ? "On" : "Off")
+                LabeledContent("MoltenVK CX", value: config.moltenVKCX ? "On" : "Off")
+            }
+            DisclosureGroup("Files") {
+                Text(installFolderPath)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                Button {
+                    model.revealInFinder(installFolderPath)
+                } label: {
+                    Label("Reveal in Finder", systemImage: "folder")
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+    }
+
+    private var installFolderPath: String {
+        (SteamInstaller.steamBottle.driveCPath as NSString)
+            .appendingPathComponent("Program Files (x86)/Steam/steamapps/common")
+            .appending("/\(game.installDir)")
     }
 }
 

@@ -1,17 +1,15 @@
 import SwiftUI
+import AppKit
 
 struct LibraryView: View {
     @EnvironmentObject private var model: AppModel
     @LocalState private var search = ""
 
-    private var grouped: [(bottleName: String, apps: [DetectedApp])] {
+    private var pathTree: [PathTreeNode] {
         let filtered = search.isEmpty
             ? model.detectedApps
             : model.detectedApps.filter { $0.displayName.localizedCaseInsensitiveContains(search) }
-        let groups = Dictionary(grouping: filtered) { $0.bottle.name }
-        return groups.keys.sorted().map { name in
-            (name, groups[name]!.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending })
-        }
+        return PathTree.build(from: filtered)
     }
 
     var body: some View {
@@ -36,18 +34,39 @@ struct LibraryView: View {
             if model.detectedApps.isEmpty {
                 emptyState
             } else {
-                List {
-                    ForEach(grouped, id: \.bottleName) { group in
-                        Section(group.bottleName) {
-                            ForEach(group.apps) { app in
-                                AppRow(app: app)
-                            }
-                        }
-                    }
+                // A real folder hierarchy (bottle -> steamapps -> common -> Hollow Knight ->
+                // hollow_knight.exe) instead of a flat list - built by PathTree, rendered with
+                // SwiftUI's own List(_:children:) disclosure support, no custom plumbing needed.
+                List(pathTree, children: \.children) { node in
+                    rowContent(node)
                 }
                 .listStyle(.inset)
-                .environment(\.defaultMinListRowHeight, 52)
+                .environment(\.defaultMinListRowHeight, 44)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func rowContent(_ node: PathTreeNode) -> some View {
+        if let app = node.app {
+            AppRow(app: app)
+                .contextMenu {
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(app.exePath, forType: .string)
+                    } label: {
+                        Label("Copy Path", systemImage: "doc.on.doc")
+                    }
+                    Button {
+                        model.revealInFinder(app.bottle.driveCPath)
+                    } label: {
+                        Label("Open Bottle", systemImage: "internaldrive")
+                    }
+                }
+        } else {
+            Label(node.name, systemImage: "folder")
+                .font(.body)
+                .foregroundStyle(.secondary)
         }
     }
 
