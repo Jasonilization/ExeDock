@@ -445,10 +445,29 @@ private struct DefaultSettingsSheet: View {
                 if isAdvancedMode {
                     GameSettingsFields(config: $model.gameModeConfig)
                 }
+
+                Section {
+                    Button {
+                        model.revealInFinder(ExeRunner.logsDir)
+                    } label: {
+                        Label("Open Logs Folder", systemImage: "doc.text.magnifyingglass")
+                    }
+                    Button {
+                        model.revealInFinder(("~/Library/Logs/DiagnosticReports" as NSString).expandingTildeInPath)
+                    } label: {
+                        Label("Open Crash Reports", systemImage: "exclamationmark.triangle")
+                    }
+                } header: {
+                    Text("Diagnostics")
+                } footer: {
+                    Text("Every launch writes its own wine log here, plus a running record of background checks (like fetching a game's store art). If something's not working, this is the first place to look.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
         }
-        .frame(width: 420, height: isAdvancedMode ? 520 : 220)
+        .frame(width: 420, height: isAdvancedMode ? 620 : 340)
         .animation(.easeInOut(duration: 0.2), value: isAdvancedMode)
     }
 }

@@ -7,32 +7,45 @@ import SwiftUI
 private struct HoverSpin: ViewModifier {
     @LocalState private var isHovering = false
     @LocalState private var isPressed = false
-    @LocalState private var isSpinning = false
+    @LocalState private var rotationDegrees: Double = 0
 
     func body(content: Content) -> some View {
         content
             .scaleEffect(isPressed ? 0.97 : (isHovering ? 1.04 : 1.0))
             .offset(y: isPressed ? 2 : (isHovering ? -3 : 0))
-            .rotation3DEffect(.degrees(isSpinning ? 360 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
+            .rotation3DEffect(.degrees(rotationDegrees), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
             .shadow(
                 color: .black.opacity(isPressed ? 0.08 : (isHovering ? 0.18 : 0)),
                 radius: isPressed ? 4 : (isHovering ? 10 : 0),
                 y: isPressed ? 2 : (isHovering ? 6 : 0)
             )
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isPressed)
-            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isHovering)
-            .animation(
-                isSpinning ? .linear(duration: 3.5).repeatForever(autoreverses: false) : .easeOut(duration: 0.4),
-                value: isSpinning
-            )
             .onHover { hovering in
-                isHovering = hovering
-                isSpinning = hovering
+                // Explicit withAnimation per mutation, on purpose - stacking multiple implicit
+                // `.animation(_:value:)` modifiers on one view and changing more than one of their
+                // values in the same tick (isHovering and the spin both flip together here) lets
+                // SwiftUI apply the wrong modifier's curve to a given property. That's what made the
+                // spin run at spring speed instead of its own slow linear one before this rewrite.
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    isHovering = hovering
+                }
+                if hovering {
+                    withAnimation(.linear(duration: 3.5).repeatForever(autoreverses: false)) {
+                        rotationDegrees += 360
+                    }
+                } else {
+                    withAnimation(.easeOut(duration: 0.4)) {
+                        rotationDegrees = rotationDegrees.truncatingRemainder(dividingBy: 360)
+                    }
+                }
             }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { _ in isPressed = true }
-                    .onEnded { _ in isPressed = false }
+                    .onChanged { _ in
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { isPressed = true }
+                    }
+                    .onEnded { _ in
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { isPressed = false }
+                    }
             )
     }
 }
