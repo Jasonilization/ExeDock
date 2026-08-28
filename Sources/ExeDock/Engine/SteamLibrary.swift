@@ -8,10 +8,6 @@ import Foundation
 enum SteamLibrary {
     /// Steam's own shared runtime payloads that show up as "apps" in steamapps/ but aren't games.
     private static let ignoredNames: Set<String> = ["steamworks common redistributables"]
-    private static let ignoredExeHints = [
-        "unins", "uninstall", "setup", "updater", "crashhandler", "crashreport",
-        "vconsole", "easyanticheat", "battleye", "vcredist", "dxsetup", "dotnet",
-    ]
 
     private static var steamAppsPath: String {
         (SteamInstaller.steamBottle.driveCPath as NSString)
@@ -78,22 +74,6 @@ enum SteamLibrary {
     /// their real binary several folders deep (e.g. `game/bin/win64/`), deeper than a typical
     /// Program Files install, so this looks further down than `CDriveScanner` does.
     private static func iconExecutable(inFolder folder: String) -> String? {
-        let fm = FileManager.default
-        guard let enumerator = fm.enumerator(atPath: folder) else { return nil }
-        var candidates: [(path: String, size: Int)] = []
-        for case let relativePath as String in enumerator {
-            if enumerator.level > 5 {
-                enumerator.skipDescendants()
-                continue
-            }
-            guard relativePath.lowercased().hasSuffix(".exe") else { continue }
-            let name = (relativePath as NSString).lastPathComponent.lowercased()
-            guard !ignoredExeHints.contains(where: { name.contains($0) }) else { continue }
-            let fullPath = (folder as NSString).appendingPathComponent(relativePath)
-            let attrs = try? fm.attributesOfItem(atPath: fullPath)
-            let size = (attrs?[.size] as? Int) ?? 0
-            candidates.append((fullPath, size))
-        }
-        return candidates.max(by: { $0.size < $1.size })?.path
+        ExecutableHeuristics.bestGuessExecutable(inFolder: folder, maxDepth: 5)
     }
 }
