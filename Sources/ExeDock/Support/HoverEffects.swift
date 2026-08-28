@@ -50,8 +50,32 @@ private struct HoverSpin: ViewModifier {
     }
 }
 
+/// Just a press-down nudge, no hover effects at all - for the Steam launch tile, which turned out
+/// to want less going on than a full `hoverSpin()`.
+private struct PressPush: ViewModifier {
+    @LocalState private var isPressed = false
+
+    func body(content: Content) -> some View {
+        content
+            .offset(y: isPressed ? 5 : 0)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) { isPressed = true }
+                    }
+                    .onEnded { _ in
+                        withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) { isPressed = false }
+                    }
+            )
+    }
+}
+
 extension View {
     func hoverSpin() -> some View {
         modifier(HoverSpin())
+    }
+
+    func pressPush() -> some View {
+        modifier(PressPush())
     }
 }

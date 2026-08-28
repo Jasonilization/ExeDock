@@ -132,7 +132,7 @@ struct GameModeView: View {
             .frame(width: 160, height: 160)
             .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
             .contentShape(RoundedRectangle(cornerRadius: 30))
-            .hoverSpin()
+            .pressPush()
             .onTapGesture(count: 2) {
                 model.openSteamClient()
             }
