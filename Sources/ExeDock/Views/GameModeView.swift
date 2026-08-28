@@ -220,7 +220,12 @@ struct GameModeView: View {
             .frame(width: 160, height: 160)
             .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
             .contentShape(RoundedRectangle(cornerRadius: 30))
-            .pressPush()
+            // No .pressPush()/other gesture-based press effect here on purpose - a real bug,
+            // found live: a simultaneous zero-distance DragGesture (which is what that press
+            // effect used to detect "pressed") competing with .onTapGesture(count: 2) on the same
+            // view could silently swallow the double-click recognition entirely, so double-
+            // clicking did nothing at all - no spinner, no launch. The isLaunching-driven
+            // opacity/spinner below is the only feedback this needs.
             .onTapGesture(count: 2) {
                 model.openSteamClient()
             }
