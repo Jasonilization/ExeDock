@@ -4,27 +4,13 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
+    @ObservedObject private var controllerObserver = ControllerObserver.shared
     @LocalState private var isTargeted = false
 
     var body: some View {
-        NavigationSplitView {
-            // Steam is the main event - it stands alone at the top, un-grouped, so it's the first
-            // thing anyone sees. Generic exe-running lives one step down as a clearly secondary,
-            // more "technical" section for people who already know they want it.
-            List(selection: $model.selectedSection) {
-                Label("Steam", systemImage: "gamecontroller.fill").tag(AppModel.SidebarSection.gameMode)
-
-                Section("Exe Loader") {
-                    Label("Library", systemImage: "square.grid.2x2").tag(AppModel.SidebarSection.library)
-                    Label("C: Drive", systemImage: "internaldrive").tag(AppModel.SidebarSection.cDrive)
-                }
-            }
-            .font(.title3)
-            .symbolVariant(.none)
-            .imageScale(.large)
-            .environment(\.defaultMinListRowHeight, 40)
-            .navigationSplitViewColumnWidth(min: 200, ideal: 220)
-        } detail: {
+        VStack(spacing: 0) {
+            topBar
+            Divider()
             VStack(spacing: 0) {
                 // The Steam dashboard has its own header/search/launch flow - the generic drop
                 // zone and toolbar only make sense on the Exe Loader side, so they'd just be visual
@@ -35,33 +21,108 @@ struct ContentView: View {
                 }
                 content
             }
-            .toolbar {
-                if model.selectedSection != .gameMode {
-                    ToolbarItemGroup {
-                        Button {
-                            browseForExecutable()
-                        } label: {
-                            Label("Select EXE…", systemImage: "doc.badge.plus")
-                        }
-                        Button {
-                            model.installAndRunSteam()
-                        } label: {
-                            Label("Install & Run Steam", systemImage: "gamecontroller.fill")
-                        }
-                        .disabled(model.isInstallingSteam)
-                    }
-                }
-            }
         }
         .alert("Playdock", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(model.errorMessage ?? "")
         }
+        .onChange(of: controllerObserver.sectionStepRequest?.token) { _ in
+            guard let direction = controllerObserver.sectionStepRequest?.direction else { return }
+            stepSection(by: direction)
+        }
     }
 
     private var errorBinding: Binding<Bool> {
         Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
+    }
+
+    // MARK: - Top bar
+
+    /// A compact, always-in-the-same-spot switcher instead of a full sidebar column - keeps the
+    /// window's whole width for the dashboard, and (unlike a sidebar list) is something a
+    /// controller can drive directly: LT/RT step through it from anywhere in the app, wired
+    /// globally by `ControllerObserver` rather than needing this specific view to be focused.
+    private var topBar: some View {
+        HStack(spacing: 14) {
+            sectionSwitcher
+            Spacer()
+            if model.selectedSection != .gameMode {
+                Button {
+                    browseForExecutable()
+                } label: {
+                    Label("Select EXE…", systemImage: "doc.badge.plus")
+                }
+                .buttonStyle(.bordered)
+                Button {
+                    model.installAndRunSteam()
+                } label: {
+                    Label("Install & Run Steam", systemImage: "gamecontroller.fill")
+                }
+                .buttonStyle(.bordered)
+                .disabled(model.isInstallingSteam)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private var sectionSwitcher: some View {
+        HStack(spacing: 10) {
+            sectionButton(.gameMode)
+            // A small visual gap, not a label - Steam still reads as the primary destination and
+            // Library/C: Drive as the secondary, grouped "Exe Loader" pair, just without spending a
+            // whole sidebar section header on it.
+            Divider().frame(height: 20)
+            HStack(spacing: 4) {
+                sectionButton(.library)
+                sectionButton(.cDrive)
+            }
+        }
+    }
+
+    private func sectionButton(_ section: AppModel.SidebarSection) -> some View {
+        let isSelected = model.selectedSection == section
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { model.selectedSection = section }
+        } label: {
+            Label(title(for: section), systemImage: icon(for: section))
+                .labelStyle(.iconOnly)
+                .font(.title3)
+                .frame(width: 40, height: 32)
+        }
+        .buttonStyle(.plain)
+        .background(isSelected ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+        .help(title(for: section))
+    }
+
+    private func title(for section: AppModel.SidebarSection) -> String {
+        switch section {
+        case .gameMode: return "Steam"
+        case .library: return "Library"
+        case .cDrive: return "C: Drive"
+        }
+    }
+
+    private func icon(for section: AppModel.SidebarSection) -> String {
+        switch section {
+        case .gameMode: return "gamecontroller.fill"
+        case .library: return "square.grid.2x2"
+        case .cDrive: return "internaldrive"
+        }
+    }
+
+    /// Wired to the controller's LT (-1) / RT (+1) triggers via `ControllerObserver`, so paging
+    /// between Steam/Library/C: Drive works from anywhere in the app, not just inside the dedicated
+    /// Controller Mode carousel.
+    private func stepSection(by direction: Int) {
+        let all = AppModel.SidebarSection.allCases
+        guard let currentIndex = all.firstIndex(of: model.selectedSection) else { return }
+        let newIndex = (currentIndex + direction + all.count) % all.count
+        withAnimation(.easeInOut(duration: 0.2)) {
+            model.selectedSection = all[newIndex]
+        }
     }
 
     @ViewBuilder

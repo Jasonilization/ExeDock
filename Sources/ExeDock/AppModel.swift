@@ -3,7 +3,7 @@ import AppKit
 
 @MainActor
 final class AppModel: ObservableObject {
-    enum SidebarSection: Hashable {
+    enum SidebarSection: Hashable, CaseIterable {
         case gameMode
         case library
         case cDrive
