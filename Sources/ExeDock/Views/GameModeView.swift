@@ -646,6 +646,107 @@ private struct GameSettingsFields: View {
     }
 }
 
+/// "Check for Engine Updates" - queries the real `Sikarugir-App/Engines` GitHub release
+/// (`SikarugirEnginesRemote`) for the currently-recommended build and compares it against what's
+/// already downloaded. Checking is free/instant; the actual (potentially ~160MB) download only
+/// happens on an explicit tap.
+private struct EngineUpdateSection: View {
+    @LocalState private var isChecking = false
+    @LocalState private var isDownloading = false
+    @LocalState private var updateAvailable: RemoteEngineAsset?
+    @LocalState private var statusText: String?
+
+    var body: some View {
+        Section {
+            if let updateAvailable {
+                Text("A newer engine is available: \(updateAvailable.name)")
+                    .font(.callout)
+                Button {
+                    downloadUpdate(updateAvailable)
+                } label: {
+                    if isDownloading {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Downloading…")
+                        }
+                    } else {
+                        Text("Download Update")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isDownloading)
+            } else {
+                Button {
+                    checkForUpdates()
+                } label: {
+                    if isChecking {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Checking…")
+                        }
+                    } else {
+                        Label("Check for Engine Updates", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
+                .disabled(isChecking)
+            }
+            if let statusText {
+                Text(statusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Engine")
+        } footer: {
+            Text("Playdock's Wine engine comes from Sikarugir's public releases. Checking never downloads anything by itself.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func checkForUpdates() {
+        isChecking = true
+        statusText = nil
+        Task {
+            do {
+                let assets = try await SikarugirEnginesRemote.fetchAvailableAssets()
+                guard let recommended = SikarugirEnginesRemote.recommendedAsset(among: assets) else {
+                    isChecking = false
+                    statusText = "No engines found."
+                    return
+                }
+                let alreadyHave = Set(SikarugirEngine.availableEngineNames()).contains(recommended.name)
+                isChecking = false
+                if alreadyHave {
+                    statusText = "You already have the latest recommended engine (\(recommended.name))."
+                } else {
+                    updateAvailable = recommended
+                }
+            } catch {
+                isChecking = false
+                statusText = error.localizedDescription
+            }
+        }
+    }
+
+    private func downloadUpdate(_ asset: RemoteEngineAsset) {
+        isDownloading = true
+        Task {
+            do {
+                try await SikarugirEnginesRemote.download(asset) { message in
+                    Task { @MainActor in statusText = message }
+                }
+                isDownloading = false
+                updateAvailable = nil
+                statusText = "Downloaded \(asset.name) - pick it in Advanced Mode's engine list, or it'll be offered next time a bottle needs (re)initializing."
+            } catch {
+                isDownloading = false
+                statusText = error.localizedDescription
+            }
+        }
+    }
+}
+
 private struct DefaultSettingsSheet: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -675,6 +776,8 @@ private struct DefaultSettingsSheet: View {
                     GameSettingsFields(config: $model.gameModeConfig)
                 }
 
+                EngineUpdateSection()
+
                 Section {
                     Button {
                         model.revealInFinder(ExeRunner.logsDir)
@@ -696,7 +799,7 @@ private struct DefaultSettingsSheet: View {
             }
             .formStyle(.grouped)
         }
-        .frame(width: 420, height: isAdvancedMode ? 620 : 340)
+        .frame(width: 420, height: isAdvancedMode ? 660 : 380)
         .animation(.easeInOut(duration: 0.2), value: isAdvancedMode)
     }
 }
