@@ -7,6 +7,9 @@ enum SetupStage: Equatable {
     /// setup pauses here for the user to pick (see `SetupCoordinator.chooseEngine(_:)`) instead of
     /// silently guessing. `recommended` is pre-highlighted in the UI.
     case choosingEngine(options: [String], recommended: String?)
+    /// Playdock is fetching its own copy of an engine directly from the real, public
+    /// `Sikarugir-App/Engines` GitHub release - no separate Sikarugir Creator install needed.
+    case downloadingEngine(String)
     case extractingEngine
     case initializingBottle
     case waitingForSikarugirCreator
@@ -15,13 +18,16 @@ enum SetupStage: Equatable {
     case failed(String)
 }
 
-/// Runs automatically at launch: makes sure a Sikarugir engine and ExeDock's own bottle are ready
-/// to go before the main UI appears, "installing" whatever's missing using only what's already
-/// legitimately on this Mac.
+/// Runs automatically at launch: makes sure a Sikarugir engine and Playdock's own bottle are ready
+/// to go before the main UI appears, "installing" whatever's missing with no separate app required.
 ///
-/// ExeDock never fabricates its own download URL for a Wine engine - if nothing is available yet,
-/// the only safe move is to hand off to Sikarugir Creator (the app that owns that download) and
-/// wait for it, rather than guessing at a binary to fetch and run.
+/// If nothing's available locally, this downloads a real engine build directly from the public
+/// `Sikarugir-App/Engines` GitHub release (`SikarugirEnginesRemote`) into the exact same
+/// `~/Library/Application Support/Sikarugir/Engines/` folder Sikarugir Creator itself uses - so the
+/// two stay fully interchangeable, and a brand-new user with nothing installed still gets a working
+/// app with no extra steps. Only if that direct download can't happen (offline, GitHub unreachable)
+/// does this fall back to handing off to an already-installed Sikarugir Creator and waiting for it,
+/// rather than getting stuck.
 @MainActor
 final class SetupCoordinator: ObservableObject {
     static let sikarugirCreatorPath = "/Applications/Sikarugir Creator.app"
@@ -52,8 +58,8 @@ final class SetupCoordinator: ObservableObject {
         }
 
         // Sikarugir already downloaded at least one engine tarball - extracting it is a local copy,
-        // no network involved, so ExeDock can just do this for you. If it downloaded more than one,
-        // that's a real choice worth asking about rather than silently guessing.
+        // no network involved, so Playdock can just do this for you. If it downloaded more than
+        // one, that's a real choice worth asking about rather than silently guessing.
         if SikarugirEngine.hasDownloadedTarball() {
             let names = SikarugirEngine.availableEngineNames()
             if names.count > 1 {
@@ -64,8 +70,12 @@ final class SetupCoordinator: ObservableObject {
             return
         }
 
-        // Nothing to extract yet. If Sikarugir Creator is installed, let IT fetch an engine - ExeDock
-        // won't guess at a download URL of its own for a Wine build.
+        // Nothing local at all - try getting Playdock's own copy directly before falling back to
+        // needing a separate app.
+        if await downloadEngineDirectly() {
+            return
+        }
+
         guard FileManager.default.fileExists(atPath: Self.sikarugirCreatorPath) else {
             stage = .missingSikarugirCreator
             return
@@ -74,6 +84,33 @@ final class SetupCoordinator: ObservableObject {
         stage = .waitingForSikarugirCreator
         NSWorkspace.shared.open(URL(fileURLWithPath: Self.sikarugirCreatorPath))
         await pollForEngine()
+    }
+
+    /// Returns `true` if this path took over setup (whether it ultimately succeeded or hit a real
+    /// failure worth stopping on) - `false` only when the download itself couldn't happen at all
+    /// (e.g. offline), so the caller falls through to the Sikarugir Creator hand-off instead.
+    private func downloadEngineDirectly() async -> Bool {
+        stage = .downloadingEngine("Looking for an engine to download…")
+        let assets: [RemoteEngineAsset]
+        do {
+            assets = try await SikarugirEnginesRemote.fetchAvailableAssets()
+        } catch {
+            DiagnosticsLog.log("Setup: couldn't reach Sikarugir's engine releases - \(error.localizedDescription)")
+            return false
+        }
+        guard let recommended = SikarugirEnginesRemote.recommendedAsset(among: assets) else { return false }
+
+        do {
+            try await SikarugirEnginesRemote.download(recommended) { [weak self] message in
+                Task { @MainActor in self?.stage = .downloadingEngine(message) }
+            }
+        } catch {
+            DiagnosticsLog.log("Setup: engine download failed - \(error.localizedDescription)")
+            return false
+        }
+
+        await extractAndContinue(engineName: recommended.name)
+        return true
     }
 
     private func pollForEngine() async {
@@ -97,7 +134,7 @@ final class SetupCoordinator: ObservableObject {
             try? SikarugirEngine.wineBinaryPath(engineName: engineName)
         }.value
         guard resolved != nil else {
-            stage = .failed("Found a Sikarugir engine but couldn't prepare it. Try relaunching ExeDock.")
+            stage = .failed("Found a Sikarugir engine but couldn't prepare it. Try relaunching Playdock.")
             return
         }
         // Pass the same name along so the bottle is initialized with the exact engine that was

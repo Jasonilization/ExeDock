@@ -74,7 +74,7 @@ struct SetupView: View {
 
     private var currentStep: Step? {
         switch setup.stage {
-        case .checking, .extractingEngine, .waitingForSikarugirCreator: return .engine
+        case .checking, .downloadingEngine, .extractingEngine, .waitingForSikarugirCreator: return .engine
         case .initializingBottle: return .bottle
         case .ready, .missingSikarugirCreator, .failed, .choosingEngine: return nil
         }
@@ -114,6 +114,7 @@ struct SetupView: View {
     private var title: String {
         switch setup.stage {
         case .checking: return "Getting ready…"
+        case .downloadingEngine: return "Installing Sikarugir…"
         case .extractingEngine: return "Installing the Sikarugir engine…"
         case .initializingBottle: return "Finishing up…"
         case .waitingForSikarugirCreator: return "Waiting for Sikarugir Creator…"
@@ -126,15 +127,17 @@ struct SetupView: View {
     private var subtitle: String {
         switch setup.stage {
         case .checking:
-            return "Looking for what Sikarugir Creator has already downloaded."
+            return "Looking for what's already available."
+        case .downloadingEngine(let message):
+            return message
         case .extractingEngine:
-            return "Copying it into ExeDock - this only happens once."
+            return "Copying it into Playdock - this only happens once."
         case .initializingBottle:
             return "Just a moment more."
         case .waitingForSikarugirCreator:
-            return "ExeDock opened Sikarugir Creator so it can download what it needs to run your games. Let it finish - ExeDock will pick it up automatically, no need to relaunch."
+            return "Playdock opened Sikarugir Creator so it can download what it needs to run your games. Let it finish - Playdock will pick it up automatically, no need to relaunch."
         case .missingSikarugirCreator:
-            return "ExeDock runs on the Sikarugir engine and won't guess at a download for it. Install Sikarugir Creator, let it download once, then check again here."
+            return "Playdock couldn't reach Sikarugir's engine download over the network, and there's no separate Sikarugir Creator install to fall back to here. Check your connection and try again, or install Sikarugir Creator and let it download an engine once."
         case .failed(let message):
             return message
         case .ready, .choosingEngine:
@@ -160,16 +163,17 @@ struct SetupView: View {
 
     private var progressFraction: Double? {
         switch setup.stage {
-        case .checking: return 0.15
-        case .extractingEngine: return 0.45
-        case .initializingBottle: return 0.8
+        case .checking: return 0.1
+        case .downloadingEngine: return nil // real download progress isn't tracked byte-by-byte
+        case .extractingEngine: return 0.7
+        case .initializingBottle: return 0.9
         default: return nil
         }
     }
 
     private var showsSpinner: Bool {
         switch setup.stage {
-        case .checking, .extractingEngine, .initializingBottle, .waitingForSikarugirCreator: return true
+        case .checking, .downloadingEngine, .extractingEngine, .initializingBottle, .waitingForSikarugirCreator: return true
         default: return false
         }
     }
