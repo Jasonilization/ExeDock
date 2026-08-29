@@ -185,16 +185,18 @@ struct GameModeView: View {
         .background(Color.accentColor.opacity(0.12))
     }
 
+    /// Deliberately tiny - "insanely small and unobtrusive," per live feedback, so the games grid
+    /// gets as much of the window as possible. Just enough to identify whose library this is and
+    /// offer Refresh/Settings; everything else (art, ratings, controller navigation) lives in the
+    /// grid and the Game Detail view instead of competing for space up here.
     private var header: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 10) {
             profileAvatar
-            VStack(alignment: .leading, spacing: 2) {
-                Text(model.steamProfile?.personaName ?? "Steam")
-                    .font(.title).bold()
-                Text(model.steamGames.isEmpty ? "No games installed yet" : "\(model.steamGames.count) game\(model.steamGames.count == 1 ? "" : "s") installed")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-            }
+            Text(model.steamProfile?.personaName ?? "Steam")
+                .font(.headline)
+            Text(model.steamGames.isEmpty ? "No games installed" : "\(model.steamGames.count) game\(model.steamGames.count == 1 ? "" : "s")")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Spacer()
             headerIconButton(systemImage: "arrow.clockwise", help: "Refresh") {
                 model.refreshSteamGames()
@@ -207,20 +209,21 @@ struct GameModeView: View {
                 showingSettingsSheet = true
             }
         }
-        .padding(22)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
-    /// A round, icon-only button - softer than a bordered pill with a text label, used for the
-    /// header's secondary actions (Refresh/Settings) now that the Steam tile isn't sitting right
-    /// next to them anymore to visually anchor a row of rectangular buttons.
+    /// A soft rounded-square, icon-only button - used for the header's secondary actions
+    /// (Refresh/Settings), and generally sized big enough to be an easy, unambiguous target for a
+    /// controller cursor as well as a mouse.
     private func headerIconButton(systemImage: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.title3)
-                .frame(width: 40, height: 40)
+                .frame(width: 34, height: 34)
         }
         .buttonStyle(.bordered)
-        .clipShape(Circle())
+        .clipShape(RoundedRectangle(cornerRadius: 10))
         .help(help)
     }
 
@@ -239,16 +242,16 @@ struct GameModeView: View {
     private var steamFloatingIcon: some View {
         let isLaunching = model.launchingTarget == .steam
         return ZStack {
-            steamIcon(size: 52, cornerRadius: 16)
+            steamIcon(size: 200, cornerRadius: 44)
                 .opacity(isLaunching ? 0.3 : 1)
             if isLaunching {
-                ProgressView().controlSize(.regular)
+                ProgressView().controlSize(.large).scaleEffect(1.8)
             }
         }
-        .frame(width: 52, height: 52)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
-        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .frame(width: 200, height: 200)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 44))
+        .shadow(color: .black.opacity(0.35), radius: 20, y: 8)
+        .contentShape(RoundedRectangle(cornerRadius: 44))
         // No .pressPush()/other gesture-based press effect here on purpose - a real bug, found
         // live: a simultaneous zero-distance DragGesture (which is what that press effect used to
         // detect "pressed") competing with .onTapGesture(count: 2) on the same view could silently
@@ -295,8 +298,8 @@ struct GameModeView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(width: 64, height: 64)
-        .clipShape(Circle())
+        .frame(width: 34, height: 34)
+        .clipShape(RoundedRectangle(cornerRadius: 9))
         .hoverSpin()
     }
 
@@ -329,7 +332,23 @@ struct GameModeView: View {
         }
     }
 
-    private let gridColumns = [GridItem(.adaptive(minimum: 260, maximum: 320), spacing: 20)]
+    /// Card size scales with how many games are actually in the library - a lone game (or a
+    /// handful) gets big, prominent cards instead of sitting tiny in a corner of a mostly-empty
+    /// window; a large library steps down to a denser grid so more fits per screen. Re-evaluated
+    /// live off `filteredGames.count`, so it also reacts to search narrowing the visible set.
+    private var cardSizeTier: (minWidth: CGFloat, maxWidth: CGFloat, artworkHeight: CGFloat) {
+        switch filteredGames.count {
+        case 0...2: return (480, 640, 260)
+        case 3...6: return (360, 440, 190)
+        case 7...15: return (280, 340, 150)
+        default: return (240, 280, 130)
+        }
+    }
+
+    private var gridColumns: [GridItem] {
+        let tier = cardSizeTier
+        return [GridItem(.adaptive(minimum: tier.minWidth, maximum: tier.maxWidth), spacing: 20)]
+    }
 
     @ViewBuilder
     private var gamesGrid: some View {
@@ -350,7 +369,7 @@ struct GameModeView: View {
         } else {
             LazyVGrid(columns: gridColumns, spacing: 20) {
                 ForEach(filteredGames) { game in
-                    GameCardView(game: game, isAdvancedMode: isAdvancedMode) {
+                    GameCardView(game: game, isAdvancedMode: isAdvancedMode, artworkHeight: cardSizeTier.artworkHeight) {
                         launchOverlayGame = game
                     } onOpenDetail: {
                         detailGame = game
@@ -358,6 +377,7 @@ struct GameModeView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: model.steamGames)
+            .animation(.easeInOut(duration: 0.2), value: cardSizeTier.maxWidth)
         }
     }
 
@@ -384,6 +404,7 @@ private struct GameCardView: View {
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     let game: SteamGame
     let isAdvancedMode: Bool
+    let artworkHeight: CGFloat
     let onLaunch: () -> Void
     let onOpenDetail: () -> Void
     @LocalState private var storeInfo: SteamStoreInfo?
@@ -399,7 +420,7 @@ private struct GameCardView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 4) {
                     Text(game.name)
-                        .font(.title3.weight(.semibold))
+                        .font(.title2.weight(.semibold))
                         .lineLimit(1)
                         .help(developerHelpText)
                     Spacer()
@@ -408,9 +429,11 @@ private struct GameCardView: View {
                             showingSettings = true
                         } label: {
                             Image(systemName: hasCustomSettings ? "slider.horizontal.3" : "gearshape")
+                                .font(.title2)
+                                .frame(width: 44, height: 44)
                         }
                         .buttonStyle(.bordered)
-                        .clipShape(Circle())
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                         .help(hasCustomSettings ? "Custom settings" : "Game settings")
                         .popover(isPresented: $showingSettings) {
                             GameSettingsPopover(game: game)
@@ -419,7 +442,7 @@ private struct GameCardView: View {
                 }
                 if let description = storeInfo?.shortDescription {
                     Text(description)
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
@@ -430,7 +453,7 @@ private struct GameCardView: View {
                     openDetailHint
                 }
             }
-            .padding(16)
+            .padding(20)
         }
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.quaternary))
@@ -477,7 +500,7 @@ private struct GameCardView: View {
             }
         }
         .task(id: game.appID) {
-            storeInfo = await SteamStoreInfoCache.shared.info(for: game.appID)
+            storeInfo = await SteamStoreInfoCache.shared.info(for: game.metadataAppID)
         }
         .onHover { isHovering in
             if isHovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
@@ -567,14 +590,14 @@ private struct GameCardView: View {
     /// Replaces the old inline Launch button - launching now only happens from the full Game Detail
     /// view, reached by tapping the card, so this is just a quiet affordance instead of an action.
     private var openDetailHint: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             Image(systemName: "arrow.up.left.and.arrow.down.right")
             Text("Click for details")
         }
-        .font(.callout.weight(.medium))
+        .font(.title3.weight(.medium))
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
+        .padding(.vertical, 16)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
     }
 
@@ -590,13 +613,13 @@ private struct GameCardView: View {
                 // Not a real exe-icon lookup on purpose - NSWorkspace can't extract one from a file
                 // buried in a private, never-Finder-indexed Wine bottle, so it just renders blank.
                 Image(systemName: "gamecontroller.fill")
-                    .font(.system(size: 44))
+                    .font(.system(size: artworkHeight * 0.3))
                     .foregroundStyle(Color.accentColor)
                     .frame(maxWidth: .infinity)
                     .background(Color.accentColor.opacity(0.15))
             }
         }
-        .frame(height: 140)
+        .frame(height: artworkHeight)
         .clipped()
         .onHover { isHoveringArtwork = $0 }
     }
@@ -660,7 +683,7 @@ struct GameDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .colorScheme(.dark)
         .task(id: game.appID) {
-            storeInfo = await SteamStoreInfoCache.shared.info(for: game.appID)
+            storeInfo = await SteamStoreInfoCache.shared.info(for: game.metadataAppID)
         }
         .onExitCommand { onClose() }
     }
@@ -818,7 +841,7 @@ struct GameDetailView: View {
                 }
                 .buttonStyle(.big)
                 .disabled(model.launchingTarget != nil)
-                .frame(maxWidth: 220)
+                .frame(maxWidth: 260)
             }
             if isAdvancedMode {
                 Button {
@@ -827,6 +850,7 @@ struct GameDetailView: View {
                     Label(hasCustomSettings ? "Custom Settings" : "Settings", systemImage: hasCustomSettings ? "slider.horizontal.3" : "gearshape")
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.large)
                 .popover(isPresented: $showingSettings) {
                     GameSettingsPopover(game: game)
                 }
@@ -837,12 +861,14 @@ struct GameDetailView: View {
                 Label("Reveal", systemImage: "folder")
             }
             .buttonStyle(.bordered)
+            .controlSize(.large)
             Button {
                 model.openStorePage(for: game)
             } label: {
                 Label("Store Page", systemImage: "safari")
             }
             .buttonStyle(.bordered)
+            .controlSize(.large)
         }
         .padding(.top, 8)
     }
@@ -898,7 +924,7 @@ private struct DashboardBackdropView: View {
             }
         }
         .task(id: game.appID) {
-            headerImagePath = await SteamStoreInfoCache.shared.info(for: game.appID)?.headerImagePath
+            headerImagePath = await SteamStoreInfoCache.shared.info(for: game.metadataAppID)?.headerImagePath
         }
     }
 }
@@ -938,7 +964,7 @@ private struct LaunchOverlayView: View {
         // risking low-contrast mid-gray text if the system happens to be in light mode.
         .colorScheme(.dark)
         .task {
-            headerImagePath = await SteamStoreInfoCache.shared.info(for: game.appID)?.headerImagePath
+            headerImagePath = await SteamStoreInfoCache.shared.info(for: game.metadataAppID)?.headerImagePath
         }
     }
 
@@ -1133,6 +1159,17 @@ private struct DefaultSettingsSheet: View {
                 }
 
                 EngineUpdateSection()
+
+                Section {
+                    Toggle("Preview With Sample Games", isOn: Binding(
+                        get: { model.isPreviewingSampleGames },
+                        set: { _ in model.togglePreviewSampleGames() }
+                    ))
+                } footer: {
+                    Text("Adds 11 well-known games (real art/ratings, nothing actually installed) so you can see how the grid looks at different sizes. Turn off to remove them - they're never saved.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 Section {
                     Button {

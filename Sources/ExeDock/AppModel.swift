@@ -41,6 +41,12 @@ final class AppModel: ObservableObject {
     /// Non-nil while a Steam/game launch is in flight - drives the spinner on whichever control
     /// started it, and blocks a second launch from starting until this clears (see `launchSteam`).
     @Published var launchingTarget: LaunchTarget?
+    /// Debug-only: appends a handful of real, well-known games (with real appIDs, so their genuine
+    /// Steam art/rating/description come through the normal metadata pipeline) so the grid's layout
+    /// - especially the dynamic card sizing - can be checked with more than whatever's actually
+    /// installed. Purely additive to `steamGames`; never written to disk, never touches the real
+    /// Steam library, and toggling it off removes every sample entry immediately.
+    @Published private(set) var isPreviewingSampleGames = false
 
     var isInstallingSteam: Bool {
         if case .installing = steamStatus { return true }
@@ -242,7 +248,38 @@ final class AppModel: ObservableObject {
     }
 
     func openStorePage(for game: SteamGame) {
-        guard let url = URL(string: "https://store.steampowered.com/app/\(game.appID)") else { return }
+        guard let url = URL(string: "https://store.steampowered.com/app/\(game.metadataAppID)") else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    // MARK: - Sample games (debug preview)
+
+    /// Real, well-known appIDs on purpose - so their genuine Steam art/rating/genre/description come
+    /// straight through the same `SteamStoreInfoCache` pipeline every real card uses, instead of a
+    /// hand-faked placeholder that wouldn't actually exercise (or look like) the real thing.
+    private static let sampleGameAppIDs: [(appID: String, name: String)] = [
+        ("367520", "Hollow Knight"), ("413150", "Stardew Valley"), ("504230", "Celeste"),
+        ("1145360", "Hades"), ("620", "Portal 2"), ("220", "Half-Life 2"),
+        ("105600", "Terraria"), ("268910", "Cuphead"), ("588650", "Dead Cells"),
+        ("632470", "Disco Elysium"), ("753640", "Outer Wilds"),
+    ]
+
+    private static var sampleGames: [SteamGame] {
+        sampleGameAppIDs.enumerated().map { index, entry in
+            SteamGame(
+                appID: "SAMPLE-\(entry.appID)", name: entry.name, installDir: entry.name,
+                iconExePath: nil, sizeOnDisk: Int64(300_000_000 * (index + 1)),
+                buildID: "sample", lastUpdated: Date()
+            )
+        }
+    }
+
+    func togglePreviewSampleGames() {
+        isPreviewingSampleGames.toggle()
+        if isPreviewingSampleGames {
+            steamGames.append(contentsOf: Self.sampleGames)
+        } else {
+            steamGames.removeAll { $0.appID.hasPrefix("SAMPLE-") }
+        }
     }
 }

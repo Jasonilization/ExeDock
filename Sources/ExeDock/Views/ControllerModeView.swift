@@ -77,7 +77,7 @@ struct ControllerModeView: View {
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: showingDetail)
         .task(id: currentGame?.appID) {
             guard let currentGame else { return }
-            storeInfo = await SteamStoreInfoCache.shared.info(for: currentGame.appID)
+            storeInfo = await SteamStoreInfoCache.shared.info(for: currentGame.metadataAppID)
         }
         .onAppear { attachControllerHandlers() }
         .onDisappear { detachControllerHandlers() }
