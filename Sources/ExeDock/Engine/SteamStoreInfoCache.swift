@@ -17,7 +17,12 @@ actor SteamStoreInfoCache {
         if let cached = memoryCache[appID] {
             return cached
         }
-        if let onDisk = readFromDisk(appID) {
+        // A cache file written before genres/rating/developer/background art existed decodes fine
+        // (SteamStoreInfo's own lenient init just leaves those fields empty) but should still be
+        // treated as stale rather than trusted forever - otherwise a game looked up once, back
+        // before this enrichment shipped, would never pick up the new fields. `looksIncomplete`
+        // catches that shape without needing an explicit schema-version field.
+        if let onDisk = readFromDisk(appID), !onDisk.looksIncomplete {
             memoryCache[appID] = onDisk
             return onDisk
         }

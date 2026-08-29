@@ -38,6 +38,15 @@ struct SteamStoreInfo: Codable, Equatable {
         self.categories = categories
     }
 
+    /// True for a cache entry written before genres/developers/release date/rating existed - lets
+    /// `SteamStoreInfoCache` re-fetch instead of trusting a stale, pre-enrichment record forever.
+    /// (A genuinely obscure/delisted app with none of these fields on Steam's own side will also
+    /// read as "incomplete" and simply get re-checked on every launch - harmless, just not worth
+    /// special-casing for what's already a best-effort, purely cosmetic lookup.)
+    var looksIncomplete: Bool {
+        genres.isEmpty && developers.isEmpty && releaseDate == nil && metacriticScore == nil
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         shortDescription = try container.decodeIfPresent(String.self, forKey: .shortDescription)

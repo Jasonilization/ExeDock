@@ -19,4 +19,14 @@ struct SteamGame: Identifiable, Hashable {
     let lastUpdated: Date?
 
     var id: String { appID }
+
+    /// The real numeric Steam appID to use for public store metadata lookups. Equal to `appID` for
+    /// every real, installed game; only differs for the debug-only sample-games preview
+    /// (`AppModel.togglePreviewSampleGames`), whose entries are namespaced `SAMPLE-<realAppID>` in
+    /// `appID` itself so they can never collide with a real installed game sharing the same id (a
+    /// `ForEach` with two same-`id` elements is genuinely broken in SwiftUI, not just cosmetically
+    /// wrong) - metadata lookups still want the real, unprefixed id underneath.
+    var metadataAppID: String {
+        appID.hasPrefix("SAMPLE-") ? String(appID.dropFirst("SAMPLE-".count)) : appID
+    }
 }

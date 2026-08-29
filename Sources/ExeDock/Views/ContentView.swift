@@ -88,8 +88,8 @@ struct ContentView: View {
         } label: {
             Label(title(for: section), systemImage: icon(for: section))
                 .labelStyle(.iconOnly)
-                .font(.title3)
-                .frame(width: 40, height: 32)
+                .font(.title2)
+                .frame(width: 46, height: 36)
         }
         .buttonStyle(.plain)
         .background(isSelected ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
