@@ -1,6 +1,16 @@
 import SwiftUI
 import AppKit
 
+/// The games grid's own measured width - the grid uses `.adaptive(minimum:maximum:)` columns, so
+/// how many actually render depends on the window's current width, not a fixed number. Read via
+/// `GameModeView`'s `gridWidth` state so controller D-pad up/down can jump a full row.
+private struct GridWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct GameModeView: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var runningTracker = RunningGameTracker.shared
@@ -12,6 +22,14 @@ struct GameModeView: View {
     @LocalState private var launchOverlayGame: SteamGame?
     @LocalState private var showingControllerMode = false
     @LocalState private var detailGame: SteamGame?
+    /// Which card a controller's D-pad currently has highlighted - `nil` until the first D-pad
+    /// press (mouse-only browsing shows no ring at all). Index into `filteredGames`.
+    @LocalState private var focusedCardIndex: Int?
+    /// The grid's own measured width, used to figure out how many columns are actually rendered
+    /// right now (the grid uses `.adaptive(minimum:maximum:)`, so the true column count depends on
+    /// window width, not a fixed number) - needed so D-pad up/down jumps a full row instead of just
+    /// "next card." See `gridColumnCount`.
+    @LocalState private var gridWidth: CGFloat = 0
 
     private enum GameSortOption: String, CaseIterable, Identifiable {
         case name = "Name"
@@ -90,12 +108,24 @@ struct GameModeView: View {
                     controllerBanner
                 }
                 Divider()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        searchBar
-                        gamesGrid
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            searchBar
+                            gamesGrid
+                        }
+                        .padding(24)
+                        .background(
+                            GeometryReader { geometry in
+                                Color.clear.preference(key: GridWidthKey.self, value: geometry.size.width)
+                            }
+                        )
                     }
-                    .padding(24)
+                    .onPreferenceChange(GridWidthKey.self) { gridWidth = $0 }
+                    .onChange(of: focusedCardIndex) { index in
+                        guard let index, filteredGames.indices.contains(index) else { return }
+                        withAnimation { scrollProxy.scrollTo(filteredGames[index].id, anchor: .center) }
+                    }
                 }
             }
 
@@ -142,6 +172,14 @@ struct GameModeView: View {
         }
         .onAppear {
             runningTracker.syncWatchedGames(model.steamGames)
+        }
+        .onChange(of: controllerObserver.directionPress?.token) { _ in
+            guard isGridTheActiveControllerLayer, let direction = controllerObserver.directionPress?.direction else { return }
+            moveCardFocus(direction)
+        }
+        .onChange(of: controllerObserver.primaryPress) { _ in
+            guard isGridTheActiveControllerLayer else { return }
+            activateFocusedCard()
         }
         .onChange(of: runningTracker.runningGames) { running in
             // The overlay's honest dismiss signal: the game process actually showed up. Playdock
@@ -350,6 +388,40 @@ struct GameModeView: View {
         return [GridItem(.adaptive(minimum: tier.minWidth, maximum: tier.maxWidth), spacing: 20)]
     }
 
+    /// How many columns `.adaptive(minimum:maximum:)` is actually rendering right now, worked out
+    /// from the grid's own measured width the same way SwiftUI itself would - needed so controller
+    /// D-pad up/down can jump a full row instead of just "next card" in array order.
+    private var gridColumnCount: Int {
+        let spacing: CGFloat = 20
+        let minWidth = cardSizeTier.minWidth
+        guard gridWidth > 0, minWidth > 0 else { return 1 }
+        return max(1, Int((gridWidth + spacing) / (minWidth + spacing)))
+    }
+
+    /// Only active while nothing's covering the grid (no Game Detail view, no Controller Mode
+    /// carousel) - both of those own the same D-pad/A stream the instant they're shown, per
+    /// `ControllerObserver`'s "single owner, self-filtering subscribers" design.
+    private var isGridTheActiveControllerLayer: Bool {
+        detailGame == nil && !showingControllerMode
+    }
+
+    private func moveCardFocus(_ direction: ControllerDirection) {
+        guard !filteredGames.isEmpty else { return }
+        var index = focusedCardIndex ?? 0
+        switch direction {
+        case .left: index -= 1
+        case .right: index += 1
+        case .up: index -= gridColumnCount
+        case .down: index += gridColumnCount
+        }
+        focusedCardIndex = min(max(index, 0), filteredGames.count - 1)
+    }
+
+    private func activateFocusedCard() {
+        guard let focusedCardIndex, filteredGames.indices.contains(focusedCardIndex) else { return }
+        detailGame = filteredGames[focusedCardIndex]
+    }
+
     @ViewBuilder
     private var gamesGrid: some View {
         if model.isLoadingSteamGames && model.steamGames.isEmpty {
@@ -368,8 +440,11 @@ struct GameModeView: View {
                 .padding(.top, 40)
         } else {
             LazyVGrid(columns: gridColumns, spacing: 20) {
-                ForEach(filteredGames) { game in
-                    GameCardView(game: game, isAdvancedMode: isAdvancedMode, artworkHeight: cardSizeTier.artworkHeight) {
+                ForEach(Array(filteredGames.enumerated()), id: \.element.id) { index, game in
+                    GameCardView(
+                        game: game, isAdvancedMode: isAdvancedMode, artworkHeight: cardSizeTier.artworkHeight,
+                        isFocused: controllerObserver.isConnected && focusedCardIndex == index
+                    ) {
                         launchOverlayGame = game
                     } onOpenDetail: {
                         detailGame = game
@@ -405,6 +480,7 @@ private struct GameCardView: View {
     let game: SteamGame
     let isAdvancedMode: Bool
     let artworkHeight: CGFloat
+    let isFocused: Bool
     let onLaunch: () -> Void
     let onOpenDetail: () -> Void
     @LocalState private var storeInfo: SteamStoreInfo?
@@ -457,6 +533,7 @@ private struct GameCardView: View {
         }
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.quaternary))
+        .focusRing(isFocused)
         // Tapping the card opens the full Game Detail view rather than launching straight away -
         // "it should go into full screen before you can launch," per live feedback, so the grid
         // card itself is just an entry point now. A plain single-tap gesture on this container is
@@ -635,18 +712,79 @@ private struct GameCardView: View {
 /// `GameCardView` lives inside a `LazyVGrid`/`ScrollView`, where an off-screen card may not have a
 /// measured frame to animate from. A scale+fade transition (applied by the caller, matching
 /// `LaunchOverlayView`'s own) reads as the card "growing" into this view without that risk.
+/// The actions `actionRow` can show, in display order - used both to render the row and to drive
+/// controller focus over it (see `GameDetailView`'s `.onChange(of: controllerObserver.*)` handlers).
+private enum DetailAction: Equatable {
+    case launch, settings, reveal, storePage
+}
+
+private extension Array {
+    /// Bounds-checked indexing - `nil` for an out-of-range index instead of a crash. Controller
+    /// focus indices are clamped everywhere they're set, but reading defensively here means a
+    /// stale index (e.g. Advanced Mode toggled off while Settings was focused) degrades to "nothing
+    /// focused" instead of an out-of-bounds trap.
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}
+
 struct GameDetailView: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var runningTracker = RunningGameTracker.shared
+    @ObservedObject private var controllerObserver = ControllerObserver.shared
     let game: SteamGame
     let isAdvancedMode: Bool
     let onClose: () -> Void
     let onLaunch: () -> Void
     @LocalState private var storeInfo: SteamStoreInfo?
     @LocalState private var showingSettings = false
+    /// Which action a controller's D-pad currently has highlighted - only ever shown/used while a
+    /// controller is actually connected (see `availableActions`'s call sites), so mouse-only use
+    /// never sees a stray focus ring.
+    @LocalState private var focusedActionIndex = 0
 
     private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.appID] }
     private var hasCustomSettings: Bool { model.perGameConfigs[game.appID] != nil }
+
+    /// Exactly the same conditions `actionRow` already uses to decide what to show - kept as one
+    /// list so controller focus always lines up with what's actually on screen (e.g. never
+    /// highlights a Settings button that isn't rendered outside Advanced Mode).
+    private var availableActions: [DetailAction] {
+        var actions: [DetailAction] = []
+        if runningInfo == nil { actions.append(.launch) }
+        if isAdvancedMode { actions.append(.settings) }
+        actions.append(.reveal)
+        actions.append(.storePage)
+        return actions
+    }
+
+    private func isFocused(_ action: DetailAction) -> Bool {
+        controllerObserver.isConnected && availableActions[safe: focusedActionIndex] == action
+    }
+
+    private func moveActionFocus(_ direction: ControllerDirection) {
+        guard !availableActions.isEmpty else { return }
+        switch direction {
+        case .left, .up: focusedActionIndex = max(0, focusedActionIndex - 1)
+        case .right, .down: focusedActionIndex = min(availableActions.count - 1, focusedActionIndex + 1)
+        }
+    }
+
+    private func activateFocusedAction() {
+        switch availableActions[safe: focusedActionIndex] {
+        case .launch:
+            onLaunch()
+            model.launchSteamGame(game)
+        case .settings:
+            showingSettings = true
+        case .reveal:
+            model.revealInFinder(installFolderPath)
+        case .storePage:
+            model.openStorePage(for: game)
+        case nil:
+            break
+        }
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -686,6 +824,19 @@ struct GameDetailView: View {
             storeInfo = await SteamStoreInfoCache.shared.info(for: game.metadataAppID)
         }
         .onExitCommand { onClose() }
+        // GameDetailView always treats itself as the active controller-input layer while it's
+        // mounted - it's rendered above everything else wherever it appears (a direct card tap, or
+        // ControllerModeView's own drill-down), so there's nothing above it to defer to.
+        .onChange(of: controllerObserver.directionPress?.token) { _ in
+            guard let direction = controllerObserver.directionPress?.direction else { return }
+            moveActionFocus(direction)
+        }
+        .onChange(of: controllerObserver.primaryPress) { _ in
+            activateFocusedAction()
+        }
+        .onChange(of: controllerObserver.secondaryPress) { _ in
+            onClose()
+        }
     }
 
     private var closeButton: some View {
@@ -842,6 +993,7 @@ struct GameDetailView: View {
                 .buttonStyle(.big)
                 .disabled(model.launchingTarget != nil)
                 .frame(maxWidth: 260)
+                .focusRing(isFocused(.launch))
             }
             if isAdvancedMode {
                 Button {
@@ -851,6 +1003,7 @@ struct GameDetailView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
+                .focusRing(isFocused(.settings))
                 .popover(isPresented: $showingSettings) {
                     GameSettingsPopover(game: game)
                 }
@@ -862,6 +1015,7 @@ struct GameDetailView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
+            .focusRing(isFocused(.reveal))
             Button {
                 model.openStorePage(for: game)
             } label: {
@@ -869,6 +1023,7 @@ struct GameDetailView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
+            .focusRing(isFocused(.storePage))
         }
         .padding(.top, 8)
     }
