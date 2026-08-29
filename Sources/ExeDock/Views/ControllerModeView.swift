@@ -1,14 +1,16 @@
 import SwiftUI
-import GameController
 
 /// A big, controller-navigable carousel: one game centered at a time, D-pad left/right to switch, A
 /// to drill into that game's full Game Detail view (not launch straight away - "controller mode
 /// should just be able to select everything," per live feedback), B to back out one level at a
-/// time (out of the detail view first, then out of Controller Mode itself). Grabs whichever
-/// controller is connected when this view appears - doesn't try to handle a controller swap
-/// mid-session, a reasonable v1 scope for what's already a fairly involved feature set.
+/// time (out of the detail view first, then out of Controller Mode itself). Reacts to
+/// `ControllerObserver`'s shared D-pad/A/B stream rather than owning raw `GCExtendedGamepad`
+/// handlers itself, self-filtering on `showingDetail` so it steps back and lets `GameDetailView`
+/// (which reacts to the exact same stream, always active while it's mounted) own input the moment
+/// it's shown - see `ControllerObserver`'s own doc comment for why that split exists.
 struct ControllerModeView: View {
     @EnvironmentObject private var model: AppModel
+    @ObservedObject private var controllerObserver = ControllerObserver.shared
     @AppStorage("com.exedock.advancedMode") private var isAdvancedMode = false
     let onExit: () -> Void
     @LocalState private var selectedIndex = 0
@@ -79,8 +81,26 @@ struct ControllerModeView: View {
             guard let currentGame else { return }
             storeInfo = await SteamStoreInfoCache.shared.info(for: currentGame.metadataAppID)
         }
-        .onAppear { attachControllerHandlers() }
-        .onDisappear { detachControllerHandlers() }
+        .onChange(of: controllerObserver.directionPress?.token) { _ in
+            // Only browse the carousel while the detail view isn't covering it - GameDetailView
+            // owns the D-pad the moment it's shown (see the type's own doc comment).
+            guard !showingDetail, let direction = controllerObserver.directionPress?.direction else { return }
+            switch direction {
+            case .left: movePrevious()
+            case .right: moveNext()
+            case .up, .down: break
+            }
+        }
+        .onChange(of: controllerObserver.primaryPress) { _ in
+            // A drills into the detail view - GameDetailView (once shown) owns its own A/B
+            // behavior (navigate its actions, launch, close) via the same shared stream.
+            guard !showingDetail, currentGame != nil else { return }
+            openDetail()
+        }
+        .onChange(of: controllerObserver.secondaryPress) { _ in
+            guard !showingDetail else { return }
+            backOut()
+        }
     }
 
     private func openDetail() {
@@ -146,46 +166,5 @@ struct ControllerModeView: View {
     private func moveNext() {
         guard selectedIndex < games.count - 1 else { return }
         withAnimation(.easeInOut(duration: 0.2)) { selectedIndex += 1 }
-    }
-
-    /// `pressedChangedHandler` (button-edge semantics: fires once per press/release), not
-    /// `valueChangedHandler` (fires continuously while held) - the latter would fire dozens of
-    /// times a second while the D-pad is held, jumping through the whole list instantly.
-    private func attachControllerHandlers() {
-        guard let gamepad = GCController.controllers().first?.extendedGamepad else { return }
-        // Left/right only browse the carousel while the detail view isn't covering it - otherwise
-        // an accidental D-pad nudge while reading a game's details would swap the game underneath.
-        gamepad.dpad.left.pressedChangedHandler = { [self] _, _, pressed in
-            guard pressed, !showingDetail else { return }
-            Task { @MainActor in movePrevious() }
-        }
-        gamepad.dpad.right.pressedChangedHandler = { [self] _, _, pressed in
-            guard pressed, !showingDetail else { return }
-            Task { @MainActor in moveNext() }
-        }
-        // A drills into the detail view first; only launches once that detail view is already
-        // open - the same two-step "select, then confirm" flow a console dashboard uses.
-        gamepad.buttonA.pressedChangedHandler = { [self] _, _, pressed in
-            guard pressed, let currentGame else { return }
-            Task { @MainActor in
-                if showingDetail {
-                    model.launchSteamGame(currentGame)
-                } else {
-                    openDetail()
-                }
-            }
-        }
-        gamepad.buttonB.pressedChangedHandler = { [self] _, _, pressed in
-            guard pressed else { return }
-            Task { @MainActor in backOut() }
-        }
-    }
-
-    private func detachControllerHandlers() {
-        guard let gamepad = GCController.controllers().first?.extendedGamepad else { return }
-        gamepad.dpad.left.pressedChangedHandler = nil
-        gamepad.dpad.right.pressedChangedHandler = nil
-        gamepad.buttonA.pressedChangedHandler = nil
-        gamepad.buttonB.pressedChangedHandler = nil
     }
 }
