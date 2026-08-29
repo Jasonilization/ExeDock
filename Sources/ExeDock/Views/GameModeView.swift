@@ -99,6 +99,11 @@ struct GameModeView: View {
                 }
             }
 
+            steamFloatingIcon
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding(24)
+                .allowsHitTesting(detailGame == nil && launchOverlayGame == nil && !showingControllerMode)
+
             if let detailGame {
                 GameDetailView(game: detailGame, isAdvancedMode: isAdvancedMode) {
                     self.detailGame = nil
@@ -191,50 +196,59 @@ struct GameModeView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            steamHeaderIcon
-            Button {
+            headerIconButton(systemImage: "arrow.clockwise", help: "Refresh") {
                 model.refreshSteamGames()
                 model.refreshSteamProfile()
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
             }
-            .buttonStyle(.bordered)
             .keyboardShortcut("r", modifiers: .command)
             .disabled(model.isLoadingSteamGames)
 
-            Button {
+            headerIconButton(systemImage: "gearshape", help: "Settings") {
                 showingSettingsSheet = true
-            } label: {
-                Label("Settings", systemImage: "gearshape")
             }
-            .buttonStyle(.bordered)
         }
         .padding(22)
     }
 
+    /// A round, icon-only button - softer than a bordered pill with a text label, used for the
+    /// header's secondary actions (Refresh/Settings) now that the Steam tile isn't sitting right
+    /// next to them anymore to visually anchor a row of rectangular buttons.
+    private func headerIconButton(systemImage: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.title3)
+                .frame(width: 40, height: 40)
+        }
+        .buttonStyle(.bordered)
+        .clipShape(Circle())
+        .help(help)
+    }
+
     /// The way to open Steam itself - double-click, the same gesture as opening anything else on a
-    /// Mac. Lives as a small icon up in the header now (moved off a big centered tile that used to
-    /// take up nearly half the screen, per live feedback - "the steam icon just stay in the top
-    /// right where you can minimalize it"). Uses Steam's own real icon when the native Mac Steam.app
-    /// is present on this machine (legitimately already installed by the user, same as how
-    /// AppIconProvider reads any other already-installed app's icon) - falling back to an in-house
-    /// glyph otherwise, since NSWorkspace can't extract an icon from a .exe buried in a private,
-    /// never-Finder-indexed Wine bottle. Shows exactly one spinner, right on the icon, while
-    /// launching.
+    /// Mac. Floats over the bottom-right corner of the whole dashboard (moved off a big centered
+    /// tile that used to take up nearly half the screen, then off the header entirely - "the steam
+    /// icon be at the bottom right," per live feedback), always reachable without competing for
+    /// space with anything else in the layout. Uses Steam's own real icon when the native Mac
+    /// Steam.app is present on this machine (legitimately already installed by the user, same as
+    /// how AppIconProvider reads any other already-installed app's icon) - falling back to an
+    /// in-house glyph otherwise, since NSWorkspace can't extract an icon from a .exe buried in a
+    /// private, never-Finder-indexed Wine bottle. Shows exactly one spinner, right on the icon,
+    /// while launching.
     private static let nativeSteamAppPath = "/Applications/Steam.app"
 
-    private var steamHeaderIcon: some View {
+    private var steamFloatingIcon: some View {
         let isLaunching = model.launchingTarget == .steam
         return ZStack {
-            steamIcon(size: 44, cornerRadius: 11)
+            steamIcon(size: 52, cornerRadius: 16)
                 .opacity(isLaunching ? 0.3 : 1)
             if isLaunching {
-                ProgressView().controlSize(.small)
+                ProgressView().controlSize(.regular)
             }
         }
-        .frame(width: 44, height: 44)
-        .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
-        .contentShape(RoundedRectangle(cornerRadius: 11))
+        .frame(width: 52, height: 52)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+        .contentShape(RoundedRectangle(cornerRadius: 16))
         // No .pressPush()/other gesture-based press effect here on purpose - a real bug, found
         // live: a simultaneous zero-distance DragGesture (which is what that press effect used to
         // detect "pressed") competing with .onTapGesture(count: 2) on the same view could silently
@@ -282,7 +296,7 @@ struct GameModeView: View {
             }
         }
         .frame(width: 64, height: 64)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(Circle())
         .hoverSpin()
     }
 
@@ -628,10 +642,22 @@ struct GameDetailView: View {
                         actionRow
                     }
                     .padding(32)
+                    // The double .frame() is deliberate, not redundant: the first caps the content
+                    // column's own width so it stays readable at 720pt; the second then re-expands
+                    // that capped block to fill whatever width the ScrollView actually has and
+                    // re-applies leading alignment *within* that full width. A single
+                    // `.frame(maxWidth: 720, alignment: .leading)` only caps the view's own size -
+                    // it doesn't reliably left-anchor it against a wider ancestor, which is exactly
+                    // what put this content off-screen entirely: confirmed live, content rendering
+                    // well past the left edge of the window with no way to reach the close button.
                     .frame(maxWidth: 720, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .clipped()
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .colorScheme(.dark)
         .task(id: game.appID) {
             storeInfo = await SteamStoreInfoCache.shared.info(for: game.appID)
