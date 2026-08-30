@@ -846,6 +846,9 @@ struct GameDetailView: View {
     /// controller is actually connected (see `availableActions`'s call sites), so mouse-only use
     /// never sees a stray focus ring.
     @LocalState private var focusedActionIndex = 0
+    /// Non-nil while a photo is shown full-size over everything else - "images are expandable for
+    /// the more detail pictures," per live feedback.
+    @LocalState private var expandedImagePath: String?
 
     private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.appID] }
     private var hasCustomSettings: Bool { model.perGameConfigs[game.appID] != nil }
@@ -896,43 +899,36 @@ struct GameDetailView: View {
             VStack(alignment: .leading, spacing: 0) {
                 closeButton
                 ScrollView {
-                    HStack(alignment: .top, spacing: 28) {
-                        VStack(alignment: .leading, spacing: 18) {
-                            header
-                            // The full "About This Game" copy when it's there (real store text,
-                            // not just the one-line card blurb) - falls back to the short
-                            // description for anything fetched before this field existed, or for
-                            // entries with no fuller write-up at all.
-                            if let description = storeInfo?.aboutTheGame ?? storeInfo?.shortDescription {
-                                Text(description)
-                                    .font(.body)
-                                    .foregroundStyle(.white.opacity(0.85))
-                            }
-                            metaRow
-                            actionRow
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
+                    VStack(alignment: .leading, spacing: 22) {
+                        header
+                        actionRow
+                        descriptionCard
                         if hasPhotos {
-                            photoColumn
-                                .frame(width: 260)
+                            photoGrid
                         }
+                        infoSection
                     }
                     .padding(32)
                     // The double .frame() is deliberate, not redundant: the first caps the content
-                    // row's own width so it stays readable at 820pt; the second then re-expands
+                    // column's own width so it stays readable at 1040pt; the second then re-expands
                     // that capped block to fill whatever width the ScrollView actually has and
                     // re-applies leading alignment *within* that full width. A single
-                    // `.frame(maxWidth: 820, alignment: .leading)` only caps the view's own size -
+                    // `.frame(maxWidth: 1040, alignment: .leading)` only caps the view's own size -
                     // it doesn't reliably left-anchor it against a wider ancestor, which is exactly
                     // what put this content off-screen entirely: confirmed live, content rendering
                     // well past the left edge of the window with no way to reach the close button.
-                    .frame(maxWidth: 820, alignment: .leading)
+                    .frame(maxWidth: 1040, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .clipped()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            if let expandedImagePath {
+                imageLightbox(expandedImagePath)
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .colorScheme(.dark)
@@ -944,14 +940,21 @@ struct GameDetailView: View {
         // mounted - it's rendered above everything else wherever it appears (a direct card tap, or
         // ControllerModeView's own drill-down), so there's nothing above it to defer to.
         .onChange(of: controllerObserver.directionPress?.token) { _ in
-            guard let direction = controllerObserver.directionPress?.direction else { return }
+            guard expandedImagePath == nil, let direction = controllerObserver.directionPress?.direction else { return }
             moveActionFocus(direction)
         }
         .onChange(of: controllerObserver.primaryPress) { _ in
+            guard expandedImagePath == nil else { return }
             activateFocusedAction()
         }
         .onChange(of: controllerObserver.secondaryPress) { _ in
-            onClose()
+            // Back out one level at a time - close the expanded photo first if one's open, the
+            // whole detail view otherwise.
+            if expandedImagePath != nil {
+                expandedImagePath = nil
+            } else {
+                onClose()
+            }
         }
     }
 
@@ -1006,38 +1009,157 @@ struct GameDetailView: View {
         }
     }
 
-    /// True whenever there's actually something to put in `photoColumn` - governs whether the
-    /// right-hand photo column renders at all, so a game with no fetched art doesn't leave an empty
-    /// gap on the right.
+    /// The full "About This Game" copy, styled as its own card rather than plain running text -
+    /// "make it better looking with the description," per live feedback. Falls back to the short
+    /// description for anything fetched before this field existed, or with no fuller write-up.
+    @ViewBuilder
+    private var descriptionCard: some View {
+        if let description = storeInfo?.aboutTheGame ?? storeInfo?.shortDescription {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("About This Game")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Text(description)
+                    .font(.body)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .lineSpacing(4)
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+        }
+    }
+
+    /// True whenever there's actually something to put in `photoGrid`.
     private var hasPhotos: Bool {
         storeInfo?.headerImagePath != nil || !(storeInfo?.screenshotPaths.isEmpty ?? true)
     }
 
-    /// Every "game photo" (header art, then screenshots) stacked in one column on the right side of
-    /// the view - "for game photos... move to the right," per live feedback. Each image sizes
-    /// itself to the column's own fixed width via `.aspectRatio(contentMode: .fit)`, which can never
-    /// crop *or* stretch an image regardless of its real aspect ratio - the fix for a real, separate
-    /// complaint ("it looks squashed") that a fixed width+height frame with `.fill` risked for
-    /// screenshots, whose aspect ratio doesn't always match the header art's.
-    private var photoColumn: some View {
-        VStack(spacing: 12) {
-            if let path = storeInfo?.headerImagePath, let image = LocalImageCache.image(atPath: path) {
+    /// Every "game photo" (header art, then screenshots) laid out in a real grid - multiple per
+    /// row - so they're all visible without scrolling past them, per live feedback ("make sure the
+    /// pictures are in rows so i can just see them without scrolling"). Thumbnails are a fixed,
+    /// uniform size (cropped to fit via `.fill`, the normal way any thumbnail grid works - Steam's
+    /// own screenshot grid does the same) and tap to open the *complete*, uncropped image via
+    /// `imageLightbox` - "images are expandable for the more detail pictures."
+    private var photoGrid: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Media")
+                .font(.headline)
+                .foregroundStyle(.white)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180, maximum: 220), spacing: 12)], spacing: 12) {
+                if let path = storeInfo?.headerImagePath {
+                    photoThumbnail(path)
+                }
+                ForEach(storeInfo?.screenshotPaths ?? [], id: \.self) { path in
+                    photoThumbnail(path)
+                }
+            }
+        }
+    }
+
+    private func photoThumbnail(_ path: String) -> some View {
+        Group {
+            if let image = LocalImageCache.image(atPath: path) {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: 110)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
+                    .onTapGesture { expandedImagePath = path }
+            }
+        }
+    }
+
+    /// A full-size, uncropped look at one photo - tap anywhere (or press Escape/B) to dismiss.
+    private func imageLightbox(_ path: String) -> some View {
+        ZStack {
+            Color.black.opacity(0.92).ignoresSafeArea()
+            if let image = LocalImageCache.image(atPath: path) {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.15)))
+                    .padding(60)
             }
-            ForEach(storeInfo?.screenshotPaths ?? [], id: \.self) { path in
-                if let image = LocalImageCache.image(atPath: path) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        expandedImagePath = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.white, .black.opacity(0.4))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(24)
+                }
+                Spacer()
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { expandedImagePath = nil }
+    }
+
+    /// Steam-storepage-style details - developer, publisher, release date, every genre and
+    /// category (not just the first few shown as header tags), size/build/engine, and a link to
+    /// the Metacritic review when there is one - "have way more info, make it like the steam
+    /// storepage type amount of info," per live feedback.
+    private var infoSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Details")
+                .font(.headline)
+                .foregroundStyle(.white)
+            VStack(alignment: .leading, spacing: 10) {
+                if let developers = storeInfo?.developers, !developers.isEmpty {
+                    infoRow("Developer", developers.joined(separator: ", "))
+                }
+                if let publishers = storeInfo?.publishers, !publishers.isEmpty, publishers != storeInfo?.developers {
+                    infoRow("Publisher", publishers.joined(separator: ", "))
+                }
+                if let releaseDate = storeInfo?.releaseDate {
+                    infoRow("Release Date", releaseDate)
+                }
+                if let genres = storeInfo?.genres, !genres.isEmpty {
+                    infoRow("Genre", genres.joined(separator: ", "))
+                }
+                if let categories = storeInfo?.categories, !categories.isEmpty {
+                    infoRow("Features", categories.joined(separator: ", "))
+                }
+                if let size = game.sizeOnDisk {
+                    infoRow("Size", ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                }
+                if let build = game.buildID {
+                    infoRow("Build", build)
+                }
+                infoRow("Engine", engineBadgeText)
+                if let metacriticScore = storeInfo?.metacriticScore, let urlString = storeInfo?.metacriticURL, let url = URL(string: urlString) {
+                    Link(destination: url) {
+                        Label("Metacritic score: \(metacriticScore)", systemImage: "arrow.up.right.square")
+                    }
+                    .font(.callout)
+                    .foregroundStyle(Color.accentColor)
                 }
             }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+        }
+    }
+
+    private func infoRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Text(label.uppercased())
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.45))
+                .frame(width: 110, alignment: .leading)
+            Text(value)
+                .font(.callout)
+                .foregroundStyle(.white.opacity(0.9))
+            Spacer()
         }
     }
 
@@ -1079,32 +1201,6 @@ struct GameDetailView: View {
         return parts.joined(separator: "  ·  ")
     }
 
-
-    private var metaRow: some View {
-        HStack(spacing: 28) {
-            if let size = game.sizeOnDisk {
-                metaItem("Size", ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
-            }
-            if let build = game.buildID {
-                metaItem("Build", build)
-            }
-            metaItem("Engine", engineBadgeText)
-            if let publisher = storeInfo?.publishers.first, publisher != storeInfo?.developers.first {
-                metaItem("Publisher", publisher)
-            }
-        }
-    }
-
-    private func metaItem(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label.uppercased())
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.45))
-            Text(value)
-                .font(.callout.weight(.medium))
-                .foregroundStyle(.white.opacity(0.9))
-        }
-    }
 
     private var engineBadgeText: String {
         let config = model.config(for: game)

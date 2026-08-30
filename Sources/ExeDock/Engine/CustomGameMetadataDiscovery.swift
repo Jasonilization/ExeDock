@@ -33,7 +33,10 @@ enum CustomGameMetadataDiscovery {
             metadata.steamGenres = storeInfo.genres
             metadata.steamReleaseDate = storeInfo.releaseDate
             metadata.steamDevelopers = storeInfo.developers
+            metadata.steamPublishers = storeInfo.publishers
+            metadata.steamCategories = storeInfo.categories
             metadata.steamMetacriticScore = storeInfo.metacriticScore
+            metadata.steamMetacriticURL = storeInfo.metacriticURL
         }
         return metadata
     }

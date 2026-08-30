@@ -6,6 +6,16 @@ struct ContentView: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var controllerObserver = ControllerObserver.shared
     @LocalState private var isTargeted = false
+    /// A global "make everything bigger or smaller" zoom, per live feedback ("add a UI slider at
+    /// the very bottom left so stuff can be big or small. like everyhting."). Applied as a single
+    /// `.scaleEffect` on the whole app's content rather than threading a scale factor through every
+    /// individual font/frame/padding value in the app - genuinely scales *everything* (text, icons,
+    /// cards, spacing) at once, the literal ask, for a fraction of the engineering cost. The
+    /// trade-off: scaling up can extend content past the window's own edges the same way it would
+    /// for any "zoom" control, rather than growing the window to compensate - the window is
+    /// resizable, so that's a reasonable, standard behavior (the same one a browser's page zoom or
+    /// a code editor's font-size zoom already has).
+    @AppStorage("com.exedock.uiScale") private var uiScale: Double = 1.0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,6 +32,7 @@ struct ContentView: View {
                 content
             }
         }
+        .scaleEffect(uiScale, anchor: .topLeading)
         .alert("Playdock", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -31,6 +42,32 @@ struct ContentView: View {
             guard let direction = controllerObserver.sectionStepRequest?.direction else { return }
             stepSection(by: direction)
         }
+        // Deliberately chained after `.scaleEffect` above, not before: `.scaleEffect` is a
+        // render-time transform, not a layout-time one, so an `.overlay` added afterward still
+        // gets positioned against the *original*, unscaled window bounds - meaning this slider
+        // stays put at the window's real bottom-left corner and at a constant, readable size no
+        // matter what `uiScale` itself is currently set to.
+        .overlay(alignment: .bottomLeading) {
+            uiScaleSlider
+        }
+    }
+
+    private var uiScaleSlider: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "textformat.size.smaller")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Slider(value: $uiScale, in: 0.75...1.5, step: 0.05)
+                .frame(width: 130)
+            Image(systemName: "textformat.size.larger")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .padding(14)
+        .help("UI Size (\(Int(uiScale * 100))%)")
     }
 
     private var errorBinding: Binding<Bool> {
