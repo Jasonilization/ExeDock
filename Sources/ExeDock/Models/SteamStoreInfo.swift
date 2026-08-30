@@ -1,16 +1,30 @@
 import Foundation
 
-/// Public store metadata for a game - description, artwork, genres, release date, and rating - used
-/// to make a game's card (and the richer Game Detail view) feel like part of a real Steam dashboard
-/// instead of a bare file-launcher row. All of it comes from the one `appdetails` call
-/// `SteamStoreInfoCache` already makes - no extra network round trip for the extra fields.
+/// Public store metadata for a game - description, artwork, screenshots, genres, release date, and
+/// rating - used to make a game's card (and the richer Game Detail view) feel like part of a real
+/// Steam dashboard instead of a bare file-launcher row. All of it comes from the one `appdetails`
+/// call `SteamStoreInfoCache` already makes - no extra network round trip for the extra fields.
 struct SteamStoreInfo: Codable, Equatable {
+    /// Bumped whenever a new wave of fields is added - `SteamStoreInfoCache` re-fetches instead of
+    /// trusting a cache entry written by an older version of this struct forever. Cleaner than
+    /// guessing "is this incomplete?" from which fields happen to be empty (a genuinely sparse but
+    /// fully-fetched entry - an obscure app with no Metacritic score, say - would otherwise look
+    /// permanently stale under that heuristic).
+    static let currentSchemaVersion = 2
+
     let shortDescription: String?
+    /// The full "About This Game" text, HTML tags stripped down to plain text (with paragraph
+    /// breaks preserved) - meant for the Game Detail view; `shortDescription` above stays the
+    /// short blurb already used on cards.
+    var aboutTheGame: String?
     /// Path to a locally cached copy of the header image, if one downloaded successfully.
     let headerImagePath: String?
     /// Path to a locally cached copy of the wide background/hero art, if one downloaded
     /// successfully - meant for a full-screen detail view backdrop, not the small grid card.
     var backgroundImagePath: String?
+    /// Locally cached thumbnail screenshots (a handful, not the whole gallery) for the Game Detail
+    /// view's screenshot strip.
+    var screenshotPaths: [String] = []
     var genres: [String] = []
     var releaseDate: String?
     var developers: [String] = []
@@ -18,17 +32,16 @@ struct SteamStoreInfo: Codable, Equatable {
     var metacriticScore: Int?
     var metacriticURL: String?
     var categories: [String] = []
+    var schemaVersion: Int = Self.currentSchemaVersion
 
-    /// Decodes leniently so cache files written before these fields existed (just
-    /// `shortDescription`/`headerImagePath`) still load fine - they simply come back with the new
-    /// fields empty, and get filled in on the next network fetch rather than failing to decode at
-    /// all (which would otherwise just force a silent, harmless re-fetch anyway).
-    init(shortDescription: String?, headerImagePath: String?, backgroundImagePath: String? = nil,
-         genres: [String] = [], releaseDate: String? = nil, developers: [String] = [], publishers: [String] = [],
-         metacriticScore: Int? = nil, metacriticURL: String? = nil, categories: [String] = []) {
+    init(shortDescription: String?, aboutTheGame: String? = nil, headerImagePath: String?, backgroundImagePath: String? = nil,
+         screenshotPaths: [String] = [], genres: [String] = [], releaseDate: String? = nil, developers: [String] = [],
+         publishers: [String] = [], metacriticScore: Int? = nil, metacriticURL: String? = nil, categories: [String] = []) {
         self.shortDescription = shortDescription
+        self.aboutTheGame = aboutTheGame
         self.headerImagePath = headerImagePath
         self.backgroundImagePath = backgroundImagePath
+        self.screenshotPaths = screenshotPaths
         self.genres = genres
         self.releaseDate = releaseDate
         self.developers = developers
@@ -36,22 +49,25 @@ struct SteamStoreInfo: Codable, Equatable {
         self.metacriticScore = metacriticScore
         self.metacriticURL = metacriticURL
         self.categories = categories
+        self.schemaVersion = Self.currentSchemaVersion
     }
 
-    /// True for a cache entry written before genres/developers/release date/rating existed - lets
-    /// `SteamStoreInfoCache` re-fetch instead of trusting a stale, pre-enrichment record forever.
-    /// (A genuinely obscure/delisted app with none of these fields on Steam's own side will also
-    /// read as "incomplete" and simply get re-checked on every launch - harmless, just not worth
-    /// special-casing for what's already a best-effort, purely cosmetic lookup.)
-    var looksIncomplete: Bool {
-        genres.isEmpty && developers.isEmpty && releaseDate == nil && metacriticScore == nil
+    /// True for a cache entry written by an older version of this struct - lets
+    /// `SteamStoreInfoCache` re-fetch instead of trusting it forever.
+    var isStale: Bool {
+        schemaVersion < Self.currentSchemaVersion
     }
 
+    /// Decodes leniently so cache files written before a field existed still load fine (with that
+    /// field empty) rather than failing to decode entirely - `schemaVersion` defaults to `0` for
+    /// any file old enough not to have one at all, which `isStale` then catches.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         shortDescription = try container.decodeIfPresent(String.self, forKey: .shortDescription)
+        aboutTheGame = try container.decodeIfPresent(String.self, forKey: .aboutTheGame)
         headerImagePath = try container.decodeIfPresent(String.self, forKey: .headerImagePath)
         backgroundImagePath = try container.decodeIfPresent(String.self, forKey: .backgroundImagePath)
+        screenshotPaths = try container.decodeIfPresent([String].self, forKey: .screenshotPaths) ?? []
         genres = try container.decodeIfPresent([String].self, forKey: .genres) ?? []
         releaseDate = try container.decodeIfPresent(String.self, forKey: .releaseDate)
         developers = try container.decodeIfPresent([String].self, forKey: .developers) ?? []
@@ -59,5 +75,25 @@ struct SteamStoreInfo: Codable, Equatable {
         metacriticScore = try container.decodeIfPresent(Int.self, forKey: .metacriticScore)
         metacriticURL = try container.decodeIfPresent(String.self, forKey: .metacriticURL)
         categories = try container.decodeIfPresent([String].self, forKey: .categories) ?? []
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 0
+    }
+
+    /// Turns Steam's own HTML-formatted "about the game" copy into plain text: `<br>` becomes a
+    /// line break, every other tag is dropped, and the handful of entities Steam's own copy
+    /// actually uses get decoded. Not a general HTML parser (nothing here needs one) - just enough
+    /// to make Steam's real descriptions readable in a plain `Text` view.
+    static func plainText(fromHTML html: String) -> String {
+        var text = html.replacingOccurrences(of: "<br\\s*/?>", with: "\n", options: .regularExpression)
+        text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        let entities: [(String, String)] = [
+            ("&amp;", "&"), ("&quot;", "\""), ("&#39;", "'"), ("&apos;", "'"), ("&lt;", "<"), ("&gt;", ">"),
+        ]
+        for (entity, replacement) in entities {
+            text = text.replacingOccurrences(of: entity, with: replacement)
+        }
+        // Collapse 3+ blank lines down to a single paragraph break - Steam's own copy sometimes
+        // has runs of empty <br> tags for visual spacing that a SwiftUI Text doesn't need.
+        text = text.replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

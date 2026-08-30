@@ -3,6 +3,7 @@ import SwiftUI
 struct AppRow: View {
     @EnvironmentObject private var model: AppModel
     let app: DetectedApp
+    var isFocused: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -41,5 +42,6 @@ struct AppRow: View {
             .buttonStyle(.borderedProminent)
         }
         .padding(.vertical, 6)
+        .focusRing(isFocused)
     }
 }

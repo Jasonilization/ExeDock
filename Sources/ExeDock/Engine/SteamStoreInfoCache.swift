@@ -17,12 +17,11 @@ actor SteamStoreInfoCache {
         if let cached = memoryCache[appID] {
             return cached
         }
-        // A cache file written before genres/rating/developer/background art existed decodes fine
-        // (SteamStoreInfo's own lenient init just leaves those fields empty) but should still be
-        // treated as stale rather than trusted forever - otherwise a game looked up once, back
-        // before this enrichment shipped, would never pick up the new fields. `looksIncomplete`
-        // catches that shape without needing an explicit schema-version field.
-        if let onDisk = readFromDisk(appID), !onDisk.looksIncomplete {
+        // A cache file written by an older version of SteamStoreInfo decodes fine (its own lenient
+        // init just leaves newer fields empty) but should still be treated as stale rather than
+        // trusted forever - otherwise a game looked up once, before some later enrichment shipped,
+        // would never pick up the new fields. See SteamStoreInfo.isStale/currentSchemaVersion.
+        if let onDisk = readFromDisk(appID), !onDisk.isStale {
             memoryCache[appID] = onDisk
             return onDisk
         }
@@ -60,6 +59,7 @@ actor SteamStoreInfoCache {
         }
 
         let description = (appData["short_description"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let aboutTheGame = (appData["about_the_game"] as? String).map(SteamStoreInfo.plainText(fromHTML:))
         var headerImagePath: String?
         if let headerImageURLString = appData["header_image"] as? String, let headerImageURL = URL(string: headerImageURLString) {
             headerImagePath = await downloadImage(headerImageURL, appID: appID, suffix: "header")
@@ -68,6 +68,18 @@ actor SteamStoreInfoCache {
         if let backgroundURLString = appData["background_raw"] as? String ?? appData["background"] as? String,
            let backgroundURL = URL(string: backgroundURLString) {
             backgroundImagePath = await downloadImage(backgroundURL, appID: appID, suffix: "background")
+        }
+
+        // Thumbnails only, and only the first handful - a screenshot strip doesn't need the whole
+        // gallery (some games ship dozens), and full-resolution shots aren't worth the bandwidth for
+        // what's still just a supporting visual, not the main event.
+        var screenshotPaths: [String] = []
+        let screenshots = (appData["screenshots"] as? [[String: Any]]) ?? []
+        for (index, screenshot) in screenshots.prefix(6).enumerated() {
+            guard let thumbURLString = screenshot["path_thumbnail"] as? String, let thumbURL = URL(string: thumbURLString) else { continue }
+            if let path = await downloadImage(thumbURL, appID: appID, suffix: "screenshot-\(index)") {
+                screenshotPaths.append(path)
+            }
         }
 
         let genres = ((appData["genres"] as? [[String: Any]]) ?? []).compactMap { $0["description"] as? String }
@@ -85,11 +97,13 @@ actor SteamStoreInfoCache {
             DiagnosticsLog.log("Store info [\(appID)]: fetched OK but had no usable metadata at all")
             return nil
         }
-        DiagnosticsLog.log("Store info [\(appID)]: OK (description: \(description?.isEmpty == false), headerImage: \(headerImagePath != nil), genres: \(genres.count), metacritic: \(metacriticScore.map(String.init) ?? "-"))")
+        DiagnosticsLog.log("Store info [\(appID)]: OK (description: \(description?.isEmpty == false), headerImage: \(headerImagePath != nil), screenshots: \(screenshotPaths.count), genres: \(genres.count), metacritic: \(metacriticScore.map(String.init) ?? "-"))")
         return SteamStoreInfo(
             shortDescription: (description?.isEmpty == false) ? description : nil,
+            aboutTheGame: (aboutTheGame?.isEmpty == false) ? aboutTheGame : nil,
             headerImagePath: headerImagePath,
             backgroundImagePath: backgroundImagePath,
+            screenshotPaths: screenshotPaths,
             genres: genres,
             releaseDate: releaseDate,
             developers: developers,
