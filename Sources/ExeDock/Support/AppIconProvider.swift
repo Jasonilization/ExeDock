@@ -4,7 +4,14 @@ import AppKit
 /// symbol - the wrapper app's own Finder icon for anything Sikarugir already built (e.g. Steam's or
 /// Pragmata's real icon), or the file's own Finder icon otherwise.
 enum AppIconProvider {
-    private static let cache = NSCache<NSString, NSImage>()
+    private static let cache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        // Finder icons are small (macOS hands back at most 128x128 or so), but a large detected
+        // library could still mean hundreds of distinct paths in one session - a real bound instead
+        // of none, same reasoning as LocalImageCache.
+        cache.countLimit = 500
+        return cache
+    }()
 
     static func icon(for app: DetectedApp) -> NSImage {
         if case .sikarugirWrapper(let appPath) = app.bottle.kind {
