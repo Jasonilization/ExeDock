@@ -49,6 +49,13 @@ struct ContentView: View {
             guard let direction = controllerObserver.sectionStepRequest?.direction else { return }
             stepSection(by: direction)
         }
+        // "Make sure things always rechecks," per live feedback - switching back to the Steam
+        // dashboard (from either the button or a controller's LT/RT) re-scans it fresh, so a game
+        // installed or removed while looking at Library/C: Drive shows up without a full relaunch.
+        .onChange(of: model.selectedSection) { newValue in
+            guard newValue == .gameMode else { return }
+            model.refreshSteamGames()
+        }
         // Deliberately its own overlay on the GeometryReader itself, not something living inside
         // the scaled content above - this slider always renders at a constant, readable size in
         // the window's real bottom-left corner, unaffected by whatever `uiScale` currently is.

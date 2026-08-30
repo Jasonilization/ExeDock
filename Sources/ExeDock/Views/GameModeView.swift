@@ -430,17 +430,31 @@ struct GameModeView: View {
         }
     }
 
-    /// Card size scales with how many games are actually in the library - a lone game (or a
-    /// handful) gets big, prominent cards instead of sitting tiny in a corner of a mostly-empty
-    /// window; a large library steps down to a denser grid so more fits per screen. Re-evaluated
-    /// live off `libraryEntries.count`, so it also reacts to search narrowing the visible set.
-    private var cardSizeTier: (minWidth: CGFloat, maxWidth: CGFloat, artworkHeight: CGFloat) {
+    /// The card size a few-vs-many-games count alone would pick - big, prominent cards for a small
+    /// library instead of sitting tiny in a corner of a mostly-empty window; a large library steps
+    /// down to a denser grid so more fits per screen. `cardSizeTier` below is what views actually
+    /// use - this is just the "ideal, plenty of room" starting point it clamps against.
+    private var idealCardSizeTier: (minWidth: CGFloat, maxWidth: CGFloat, artworkHeight: CGFloat) {
         switch libraryEntries.count {
         case 0...2: return (480, 640, 260)
         case 3...6: return (360, 440, 190)
         case 7...15: return (280, 340, 150)
         default: return (240, 280, 130)
         }
+    }
+
+    /// The count-based ideal, clamped to whatever width the grid actually has right now -
+    /// previously sized purely off `libraryEntries.count`, which could demand a column wider than a
+    /// narrower window (or the UI-scale slider's reduced logical width) actually had room for,
+    /// overflowing off the right edge instead of adapting - "some are clipping off screen and it's
+    /// not very dynamic," per live feedback. Scales `maxWidth`/`artworkHeight` down by the same
+    /// ratio so a shrunk card still looks proportioned, not just narrower with the same tall art.
+    private var cardSizeTier: (minWidth: CGFloat, maxWidth: CGFloat, artworkHeight: CGFloat) {
+        let ideal = idealCardSizeTier
+        guard gridWidth > 0, ideal.minWidth > gridWidth else { return ideal }
+        let clampedMin = max(160, gridWidth)
+        let scale = clampedMin / ideal.minWidth
+        return (clampedMin, max(clampedMin, ideal.maxWidth * scale), max(90, ideal.artworkHeight * scale))
     }
 
     private var gridColumns: [GridItem] {
@@ -1299,9 +1313,11 @@ private struct LaunchOverlayView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
                 LoadingDotsView(message: "LAUNCHING…")
-                Text(engineSummary)
-                    .font(.callout)
-                    .foregroundStyle(.white.opacity(0.75))
+                if !engineSummary.isEmpty {
+                    Text(engineSummary)
+                        .font(.callout)
+                        .foregroundStyle(.white.opacity(0.75))
+                }
                 Spacer()
             }
         }
@@ -1327,7 +1343,12 @@ private struct LaunchOverlayView: View {
         }
     }
 
+    /// A native macOS Steam game runs through the real Steam app directly - no Wine, no engine, no
+    /// D3D backend involved at all, so showing one here would be actively wrong, not just unused
+    /// chrome - "the thing saying d3dmetal on mac steam games is a bit misleading," per live
+    /// feedback. Empty (not shown) rather than some other placeholder text.
     private var engineSummary: String {
+        guard game.source == .wineBottle else { return "" }
         var parts = [config.engineName ?? "Sikarugir"]
         if config.d3dMetal {
             parts.append("D3DMetal")
