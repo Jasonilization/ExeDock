@@ -11,6 +11,14 @@ private struct GridWidthKey: PreferenceKey {
     }
 }
 
+/// Every controller-focusable spot on the main dashboard - the toolbar (Refresh/Settings), a card
+/// in the grid, or the floating Steam icon - covering "every clickable thing," not just the grid.
+private enum DashboardFocusTarget: Equatable {
+    case toolbar(Int) // 0 = Refresh, 1 = Settings
+    case card(Int)
+    case steamIcon
+}
+
 struct GameModeView: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var runningTracker = RunningGameTracker.shared
@@ -22,9 +30,10 @@ struct GameModeView: View {
     @LocalState private var launchOverlayGame: SteamGame?
     @LocalState private var showingControllerMode = false
     @LocalState private var detailGame: SteamGame?
-    /// Which card a controller's D-pad currently has highlighted - `nil` until the first D-pad
-    /// press (mouse-only browsing shows no ring at all). Index into `filteredGames`.
-    @LocalState private var focusedCardIndex: Int?
+    /// Everywhere a controller's D-pad can currently be focused on the dashboard - the toolbar
+    /// (Refresh/Settings), a card in the grid, or the floating Steam icon. `nil` until the first
+    /// D-pad press (mouse-only browsing shows no ring at all).
+    @LocalState private var focusedTarget: DashboardFocusTarget?
     /// The grid's own measured width, used to figure out how many columns are actually rendered
     /// right now (the grid uses `.adaptive(minimum:maximum:)`, so the true column count depends on
     /// window width, not a fixed number) - needed so D-pad up/down jumps a full row instead of just
@@ -122,8 +131,8 @@ struct GameModeView: View {
                         )
                     }
                     .onPreferenceChange(GridWidthKey.self) { gridWidth = $0 }
-                    .onChange(of: focusedCardIndex) { index in
-                        guard let index, filteredGames.indices.contains(index) else { return }
+                    .onChange(of: focusedTarget) { target in
+                        guard case .card(let index) = target, filteredGames.indices.contains(index) else { return }
                         withAnimation { scrollProxy.scrollTo(filteredGames[index].id, anchor: .center) }
                     }
                 }
@@ -174,12 +183,12 @@ struct GameModeView: View {
             runningTracker.syncWatchedGames(model.steamGames)
         }
         .onChange(of: controllerObserver.directionPress?.token) { _ in
-            guard isGridTheActiveControllerLayer, let direction = controllerObserver.directionPress?.direction else { return }
-            moveCardFocus(direction)
+            guard isDashboardTheActiveControllerLayer, let direction = controllerObserver.directionPress?.direction else { return }
+            moveFocus(direction)
         }
         .onChange(of: controllerObserver.primaryPress) { _ in
-            guard isGridTheActiveControllerLayer else { return }
-            activateFocusedCard()
+            guard isDashboardTheActiveControllerLayer else { return }
+            activateFocusedTarget()
         }
         .onChange(of: runningTracker.runningGames) { running in
             // The overlay's honest dismiss signal: the game process actually showed up. Playdock
@@ -236,14 +245,14 @@ struct GameModeView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            headerIconButton(systemImage: "arrow.clockwise", help: "Refresh") {
+            headerIconButton(systemImage: "arrow.clockwise", help: "Refresh", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(0)) {
                 model.refreshSteamGames()
                 model.refreshSteamProfile()
             }
             .keyboardShortcut("r", modifiers: .command)
             .disabled(model.isLoadingSteamGames)
 
-            headerIconButton(systemImage: "gearshape", help: "Settings") {
+            headerIconButton(systemImage: "gearshape", help: "Settings", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(1)) {
                 showingSettingsSheet = true
             }
         }
@@ -254,7 +263,7 @@ struct GameModeView: View {
     /// A soft rounded-square, icon-only button - used for the header's secondary actions
     /// (Refresh/Settings), and generally sized big enough to be an easy, unambiguous target for a
     /// controller cursor as well as a mouse.
-    private func headerIconButton(systemImage: String, help: String, action: @escaping () -> Void) -> some View {
+    private func headerIconButton(systemImage: String, help: String, isFocused: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.title3)
@@ -262,6 +271,7 @@ struct GameModeView: View {
         }
         .buttonStyle(.bordered)
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .focusRing(isFocused)
         .help(help)
     }
 
@@ -300,6 +310,7 @@ struct GameModeView: View {
             model.openSteamClient()
         }
         .allowsHitTesting(model.launchingTarget == nil)
+        .focusRing(controllerObserver.isConnected && focusedTarget == .steamIcon)
         .help(isLaunching ? "Launching Steam…" : "Double-click to open Steam")
     }
 
@@ -398,28 +409,69 @@ struct GameModeView: View {
         return max(1, Int((gridWidth + spacing) / (minWidth + spacing)))
     }
 
-    /// Only active while nothing's covering the grid (no Game Detail view, no Controller Mode
+    /// Only active while nothing's covering the dashboard (no Game Detail view, no Controller Mode
     /// carousel) - both of those own the same D-pad/A stream the instant they're shown, per
     /// `ControllerObserver`'s "single owner, self-filtering subscribers" design.
-    private var isGridTheActiveControllerLayer: Bool {
+    private var isDashboardTheActiveControllerLayer: Bool {
         detailGame == nil && !showingControllerMode
     }
 
-    private func moveCardFocus(_ direction: ControllerDirection) {
-        guard !filteredGames.isEmpty else { return }
-        var index = focusedCardIndex ?? 0
-        switch direction {
-        case .left: index -= 1
-        case .right: index += 1
-        case .up: index -= gridColumnCount
-        case .down: index += gridColumnCount
+    /// Real 2D movement across every focusable spot on the dashboard: the toolbar row above the
+    /// grid, the grid itself (up/down jump a full row via `gridColumnCount`, left/right stop at
+    /// row edges instead of wrapping into the row above/below), and the floating Steam icon beyond
+    /// the grid's last row.
+    private func moveFocus(_ direction: ControllerDirection) {
+        guard let current = focusedTarget else {
+            focusedTarget = filteredGames.isEmpty ? .toolbar(0) : .card(0)
+            return
         }
-        focusedCardIndex = min(max(index, 0), filteredGames.count - 1)
+        switch current {
+        case .toolbar(let toolbarIndex):
+            switch direction {
+            case .left: focusedTarget = .toolbar(max(0, toolbarIndex - 1))
+            case .right: focusedTarget = .toolbar(min(1, toolbarIndex + 1))
+            case .down: focusedTarget = filteredGames.isEmpty ? current : .card(0)
+            case .up: break
+            }
+        case .card(let index):
+            let columns = gridColumnCount
+            switch direction {
+            case .left:
+                guard index % columns != 0 else { return }
+                focusedTarget = .card(index - 1)
+            case .right:
+                guard index % columns != columns - 1, index + 1 < filteredGames.count else { return }
+                focusedTarget = .card(index + 1)
+            case .up:
+                focusedTarget = index < columns ? .toolbar(0) : .card(index - columns)
+            case .down:
+                let next = index + columns
+                focusedTarget = next < filteredGames.count ? .card(next) : .steamIcon
+            }
+        case .steamIcon:
+            if direction == .up {
+                focusedTarget = filteredGames.isEmpty ? .toolbar(0) : .card(filteredGames.count - 1)
+            }
+        }
     }
 
-    private func activateFocusedCard() {
-        guard let focusedCardIndex, filteredGames.indices.contains(focusedCardIndex) else { return }
-        detailGame = filteredGames[focusedCardIndex]
+    private func activateFocusedTarget() {
+        switch focusedTarget {
+        case .toolbar(0):
+            guard !model.isLoadingSteamGames else { return }
+            model.refreshSteamGames()
+            model.refreshSteamProfile()
+        case .toolbar:
+            showingSettingsSheet = true
+        case .card(let index):
+            guard filteredGames.indices.contains(index) else { return }
+            detailGame = filteredGames[index]
+        case .steamIcon:
+            guard model.launchingTarget == nil else { return }
+            model.openSteamClient()
+        case nil:
+            break
+        }
     }
 
     @ViewBuilder
@@ -443,7 +495,7 @@ struct GameModeView: View {
                 ForEach(Array(filteredGames.enumerated()), id: \.element.id) { index, game in
                     GameCardView(
                         game: game, isAdvancedMode: isAdvancedMode, artworkHeight: cardSizeTier.artworkHeight,
-                        isFocused: controllerObserver.isConnected && focusedCardIndex == index
+                        isFocused: controllerObserver.isConnected && focusedTarget == .card(index)
                     ) {
                         launchOverlayGame = game
                     } onOpenDetail: {
@@ -718,16 +770,6 @@ private enum DetailAction: Equatable {
     case launch, settings, reveal, storePage
 }
 
-private extension Array {
-    /// Bounds-checked indexing - `nil` for an out-of-range index instead of a crash. Controller
-    /// focus indices are clamped everywhere they're set, but reading defensively here means a
-    /// stale index (e.g. Advanced Mode toggled off while Settings was focused) degrades to "nothing
-    /// focused" instead of an out-of-bounds trap.
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
-    }
-}
-
 struct GameDetailView: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var runningTracker = RunningGameTracker.shared
@@ -794,10 +836,17 @@ struct GameDetailView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         header
-                        if let description = storeInfo?.shortDescription {
+                        // The full "About This Game" copy when it's there (real store text, not
+                        // just the one-line card blurb) - falls back to the short description for
+                        // anything fetched before this field existed, or for entries with no fuller
+                        // write-up at all.
+                        if let description = storeInfo?.aboutTheGame ?? storeInfo?.shortDescription {
                             Text(description)
                                 .font(.body)
                                 .foregroundStyle(.white.opacity(0.85))
+                        }
+                        if let screenshotPaths = storeInfo?.screenshotPaths, !screenshotPaths.isEmpty {
+                            screenshotStrip(screenshotPaths)
                         }
                         metaRow
                         actionRow
@@ -939,6 +988,24 @@ struct GameDetailView: View {
             parts.append("Released \(releaseDate)")
         }
         return parts.joined(separator: "  ·  ")
+    }
+
+    /// A horizontal strip of real Steam screenshots - purely visual/informational, not part of the
+    /// controller focus loop (nothing to "press" here, just something to look at).
+    private func screenshotStrip(_ paths: [String]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(paths, id: \.self) { path in
+                    if let image = LocalImageCache.image(atPath: path) {
+                        Image(nsImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 240, height: 135)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+            }
+        }
     }
 
     private var metaRow: some View {
@@ -1284,10 +1351,24 @@ private struct EngineUpdateSection: View {
     }
 }
 
+/// The top-level rows in `DefaultSettingsSheet` that a controller can navigate directly - the two
+/// toggles, the two diagnostics buttons, and Done. `GameSettingsFields`/`EngineUpdateSection`'s own
+/// nested controls (sliders, pickers) aren't part of this focus loop yet - a smaller follow-up,
+/// same as the header/search/sort scope boundary on the main dashboard.
+private enum SettingsRow: Int, CaseIterable {
+    case advancedMode, sampleGames, openLogs, openCrashReports, done
+}
+
 private struct DefaultSettingsSheet: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var controllerObserver = ControllerObserver.shared
     @Binding var isAdvancedMode: Bool
+    @LocalState private var focusedRow: SettingsRow?
+
+    private func isFocused(_ row: SettingsRow) -> Bool {
+        controllerObserver.isConnected && focusedRow == row
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1296,6 +1377,7 @@ private struct DefaultSettingsSheet: View {
                 Spacer()
                 Button("Done") { dismiss() }
                     .buttonStyle(.borderedProminent)
+                    .focusRing(isFocused(.done))
             }
             .padding(16)
             Divider()
@@ -1303,6 +1385,7 @@ private struct DefaultSettingsSheet: View {
             Form {
                 Section {
                     Toggle("Advanced Mode", isOn: $isAdvancedMode)
+                        .focusRing(isFocused(.advancedMode))
                 } footer: {
                     Text("Adds a settings button to each game so you can fine-tune its engine and graphics settings individually. Most people never need this.")
                         .font(.caption)
@@ -1320,6 +1403,7 @@ private struct DefaultSettingsSheet: View {
                         get: { model.isPreviewingSampleGames },
                         set: { _ in model.togglePreviewSampleGames() }
                     ))
+                    .focusRing(isFocused(.sampleGames))
                 } footer: {
                     Text("Adds 11 well-known games (real art/ratings, nothing actually installed) so you can see how the grid looks at different sizes. Turn off to remove them - they're never saved.")
                         .font(.caption)
@@ -1332,17 +1416,38 @@ private struct DefaultSettingsSheet: View {
                     } label: {
                         Label("Open Logs Folder", systemImage: "doc.text.magnifyingglass")
                     }
+                    .focusRing(isFocused(.openLogs))
                     Button {
                         model.revealInFinder(("~/Library/Logs/DiagnosticReports" as NSString).expandingTildeInPath)
                     } label: {
                         Label("Open Crash Reports", systemImage: "exclamationmark.triangle")
                     }
+                    .focusRing(isFocused(.openCrashReports))
                 } header: {
                     Text("Diagnostics")
                 } footer: {
                     Text("Every launch writes its own wine log here, plus a running record of background checks (like fetching a game's store art). If something's not working, this is the first place to look.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+            }
+            .onChange(of: controllerObserver.directionPress?.token) { _ in
+                guard let direction = controllerObserver.directionPress?.direction, direction == .up || direction == .down else { return }
+                let all = SettingsRow.allCases
+                guard let current = focusedRow, let index = all.firstIndex(of: current) else {
+                    focusedRow = all.first
+                    return
+                }
+                focusedRow = all[safe: direction == .up ? index - 1 : index + 1] ?? current
+            }
+            .onChange(of: controllerObserver.primaryPress) { _ in
+                switch focusedRow {
+                case .advancedMode: isAdvancedMode.toggle()
+                case .sampleGames: model.togglePreviewSampleGames()
+                case .openLogs: model.revealInFinder(ExeRunner.logsDir)
+                case .openCrashReports: model.revealInFinder(("~/Library/Logs/DiagnosticReports" as NSString).expandingTildeInPath)
+                case .done: dismiss()
+                case nil: break
                 }
             }
             .formStyle(.grouped)

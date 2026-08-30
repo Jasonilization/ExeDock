@@ -4,8 +4,12 @@ import SwiftUI
 /// an .exe to run it, or reveal any file/folder in Finder.
 struct CDriveView: View {
     @EnvironmentObject private var model: AppModel
+    @ObservedObject private var controllerObserver = ControllerObserver.shared
     @LocalState private var selectedBottleID: String? = nil
     @LocalState private var pathStack: [String] = []
+    /// Which row a controller's D-pad currently has highlighted - index into `entries`. Reset
+    /// whenever the folder changes, since a stale index would point at an unrelated row.
+    @LocalState private var focusedIndex: Int?
 
     private var selectedBottle: Bottle? {
         model.bottles.first { $0.id == selectedBottleID } ?? model.bottles.first
@@ -62,19 +66,39 @@ struct CDriveView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                 Spacer()
             } else {
-                List(entries) { entry in
-                    CDriveRow(entry: entry) {
-                        handleActivate(entry)
-                    } onReveal: {
-                        model.revealInFinder(entry.path)
+                ScrollViewReader { scrollProxy in
+                    List(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                        CDriveRow(entry: entry, isFocused: controllerObserver.isConnected && focusedIndex == index) {
+                            handleActivate(entry)
+                        } onReveal: {
+                            model.revealInFinder(entry.path)
+                        }
+                    }
+                    .listStyle(.inset)
+                    .environment(\.defaultMinListRowHeight, 44)
+                    .onChange(of: focusedIndex) { index in
+                        guard let index, entries.indices.contains(index) else { return }
+                        withAnimation { scrollProxy.scrollTo(entries[index].id, anchor: .center) }
                     }
                 }
-                .listStyle(.inset)
-                .environment(\.defaultMinListRowHeight, 44)
             }
         }
         .onAppear {
             if selectedBottleID == nil { selectedBottleID = selectedBottle?.id }
+        }
+        .onChange(of: pathStack) { _ in focusedIndex = nil }
+        .onChange(of: selectedBottleID) { _ in focusedIndex = nil }
+        .onChange(of: controllerObserver.directionPress?.token) { _ in
+            guard model.selectedSection == .cDrive, let direction = controllerObserver.directionPress?.direction else { return }
+            switch direction {
+            case .up: focusedIndex = max(0, (focusedIndex ?? 0) - 1)
+            case .down: focusedIndex = min(entries.count - 1, (focusedIndex ?? -1) + 1)
+            case .left, .right: break
+            }
+        }
+        .onChange(of: controllerObserver.primaryPress) { _ in
+            guard model.selectedSection == .cDrive, let focusedIndex, entries.indices.contains(focusedIndex) else { return }
+            handleActivate(entries[focusedIndex])
         }
     }
 
@@ -121,6 +145,7 @@ struct CDriveView: View {
 
 private struct CDriveRow: View {
     let entry: CDriveEntry
+    let isFocused: Bool
     let onActivate: () -> Void
     let onReveal: () -> Void
 
@@ -144,5 +169,6 @@ private struct CDriveRow: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
+        .focusRing(isFocused)
     }
 }
