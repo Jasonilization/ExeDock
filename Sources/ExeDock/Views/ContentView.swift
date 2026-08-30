@@ -6,33 +6,40 @@ struct ContentView: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var controllerObserver = ControllerObserver.shared
     @LocalState private var isTargeted = false
-    /// A global "make everything bigger or smaller" zoom, per live feedback ("add a UI slider at
-    /// the very bottom left so stuff can be big or small. like everyhting."). Applied as a single
-    /// `.scaleEffect` on the whole app's content rather than threading a scale factor through every
-    /// individual font/frame/padding value in the app - genuinely scales *everything* (text, icons,
-    /// cards, spacing) at once, the literal ask, for a fraction of the engineering cost. The
-    /// trade-off: scaling up can extend content past the window's own edges the same way it would
-    /// for any "zoom" control, rather than growing the window to compensate - the window is
-    /// resizable, so that's a reasonable, standard behavior (the same one a browser's page zoom or
-    /// a code editor's font-size zoom already has).
+    /// A global "make everything bigger or smaller" size control, per live feedback ("add a UI
+    /// slider... so stuff can be big or small. like everyhting" - then, after a plain `.scaleEffect`
+    /// wasn't the right feel: "i meant ui get bigger not just zoom the screen. everything still
+    /// needs to be usable"). A bare `.scaleEffect` on its own is a pure *visual* zoom - it can push
+    /// content past the window's real edges (clipped, unusable) with nothing to compensate. The fix
+    /// - a well-known SwiftUI technique, not something invented here - is to first propose the
+    /// content a *smaller logical size* (the window's real size divided by the scale) and then
+    /// scale that back *up* to exactly fill the real window again: at scale 1.3, the content lays
+    /// itself out believing it only has ~77% as much room, so SwiftUI's own layout genuinely
+    /// reflows around that (fewer grid columns, tighter choices) - it's not faked - and the
+    /// subsequent scale-up then blows that smaller, correctly-laid-out result up to fill the actual
+    /// window exactly, so nothing is ever clipped and everything stays properly interactive
+    /// (`.scaleEffect` scales hit-testing right along with the visuals).
     @AppStorage("com.exedock.uiScale") private var uiScale: Double = 1.0
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            Divider()
+        GeometryReader { geometry in
             VStack(spacing: 0) {
-                // The Steam dashboard has its own header/search/launch flow - the generic drop
-                // zone and toolbar only make sense on the Exe Loader side, so they'd just be visual
-                // noise (and a distraction from "just click your game") on the main tab.
-                if model.selectedSection != .gameMode {
-                    dropZone
-                    Divider()
+                topBar
+                Divider()
+                VStack(spacing: 0) {
+                    // The Steam dashboard has its own header/search/launch flow - the generic drop
+                    // zone and toolbar only make sense on the Exe Loader side, so they'd just be
+                    // visual noise (and a distraction from "just click your game") on the main tab.
+                    if model.selectedSection != .gameMode {
+                        dropZone
+                        Divider()
+                    }
+                    content
                 }
-                content
             }
+            .frame(width: geometry.size.width / uiScale, height: geometry.size.height / uiScale)
+            .scaleEffect(uiScale, anchor: .topLeading)
         }
-        .scaleEffect(uiScale, anchor: .topLeading)
         .alert("Playdock", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -42,11 +49,9 @@ struct ContentView: View {
             guard let direction = controllerObserver.sectionStepRequest?.direction else { return }
             stepSection(by: direction)
         }
-        // Deliberately chained after `.scaleEffect` above, not before: `.scaleEffect` is a
-        // render-time transform, not a layout-time one, so an `.overlay` added afterward still
-        // gets positioned against the *original*, unscaled window bounds - meaning this slider
-        // stays put at the window's real bottom-left corner and at a constant, readable size no
-        // matter what `uiScale` itself is currently set to.
+        // Deliberately its own overlay on the GeometryReader itself, not something living inside
+        // the scaled content above - this slider always renders at a constant, readable size in
+        // the window's real bottom-left corner, unaffected by whatever `uiScale` currently is.
         .overlay(alignment: .bottomLeading) {
             uiScaleSlider
         }

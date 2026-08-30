@@ -91,9 +91,12 @@ final class RunningGameTracker: ObservableObject {
     }
 
     /// Off the main actor: shells out to `ps`, same pattern `ExeRunner`/`SikarugirEngine` already
-    /// use for `tar`/`cp`. Each `matchFragment` (e.g. "steamapps/common/Hollow Knight", or just
-    /// "Undertale" for a custom game) is checked with both path separators, since Wine's own command
-    /// lines can show either depending on how the path was passed through.
+    /// use for `tar`/`cp`. Each `matchFragment` (e.g. "steamapps/common/Hollow Knight" for a Steam
+    /// game, or an exe's own filename stem like "Dreamcore-Win64-Shipping" for a custom game) is
+    /// checked three ways: with both path separators (Wine's own command lines can show either,
+    /// depending on how the path was passed through) *and* as a bare substring with no separator
+    /// required at all - needed for a plain filename fragment, which sits at the very end of a path
+    /// followed by ".exe", not a directory separator.
     nonisolated private static func findRunningPIDs(for targets: [String: String]) -> [String: Int32] {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/ps")
@@ -111,9 +114,10 @@ final class RunningGameTracker: ObservableObject {
         for (id, matchFragment) in targets {
             let backslashFragment = (matchFragment.replacingOccurrences(of: "/", with: "\\") + "\\").lowercased()
             let slashFragment = (matchFragment + "/").lowercased()
+            let bareFragment = matchFragment.lowercased()
             guard let line = lines.first(where: {
                 let lower = $0.lowercased()
-                return lower.contains(backslashFragment) || lower.contains(slashFragment)
+                return lower.contains(backslashFragment) || lower.contains(slashFragment) || lower.contains(bareFragment)
             }) else { continue }
 
             let trimmed = line.trimmingCharacters(in: .whitespaces)

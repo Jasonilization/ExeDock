@@ -125,7 +125,11 @@ struct GameModeView: View {
     /// since they aren't necessarily installed anywhere near a `steamapps` folder at all).
     private var watchTargets: [(id: String, matchFragment: String)] {
         model.steamGames.map { (id: $0.appID, matchFragment: "steamapps/common/\($0.installDir)") }
-            + model.customGames.map { (id: $0.id, matchFragment: (($0.exePath as NSString).deletingLastPathComponent as NSString).lastPathComponent) }
+            // The exe's own filename (no extension) rather than its containing folder - a build
+            // folder is often something generic like "Win64" or "bin" shared by many different
+            // games, while the exe's own name (e.g. "Dreamcore-Win64-Shipping") is virtually always
+            // distinctive enough on its own to actually identify the right process.
+            + model.customGames.map { (id: $0.id, matchFragment: (($0.exePath as NSString).lastPathComponent as NSString).deletingPathExtension) }
     }
 
     private var dashboard: some View {
@@ -906,7 +910,6 @@ struct GameDetailView: View {
                         if hasPhotos {
                             photoGrid
                         }
-                        infoSection
                     }
                     .padding(32)
                     // The double .frame() is deliberate, not redundant: the first caps the content
@@ -1031,28 +1034,39 @@ struct GameDetailView: View {
         }
     }
 
-    /// True whenever there's actually something to put in `photoGrid`.
-    private var hasPhotos: Bool {
-        storeInfo?.headerImagePath != nil || !(storeInfo?.screenshotPaths.isEmpty ?? true)
+    /// Header art first, then every screenshot, in that order - the one list both `hasPhotos` and
+    /// `photoGrid` build rows from.
+    private var allPhotoPaths: [String] {
+        var paths: [String] = []
+        if let headerImagePath = storeInfo?.headerImagePath { paths.append(headerImagePath) }
+        paths.append(contentsOf: storeInfo?.screenshotPaths ?? [])
+        return paths
     }
 
-    /// Every "game photo" (header art, then screenshots) laid out in a real grid - multiple per
-    /// row - so they're all visible without scrolling past them, per live feedback ("make sure the
-    /// pictures are in rows so i can just see them without scrolling"). Thumbnails are a fixed,
-    /// uniform size (cropped to fit via `.fill`, the normal way any thumbnail grid works - Steam's
-    /// own screenshot grid does the same) and tap to open the *complete*, uncropped image via
-    /// `imageLightbox` - "images are expandable for the more detail pictures."
+    /// True whenever there's actually something to put in `photoGrid`.
+    private var hasPhotos: Bool { !allPhotoPaths.isEmpty }
+
+    /// Every "game photo" laid out in explicit, fixed-size rows - not an adaptive `LazyVGrid` - per
+    /// live feedback ("make sure the pictures are in rows so i can just see them without
+    /// scrolling," then, after an adaptive grid still looked off: "the pictures are moved weirdly
+    /// again"). Each thumbnail gets both its width *and* height fixed in one `.frame()` call before
+    /// `.fill` crops it, so every photo renders at exactly the same size no matter its own
+    /// screenshot's native aspect ratio - no stretching, no uneven gaps between cards. Tap one to
+    /// open the *complete*, uncropped image via `imageLightbox` - "images are expandable for the
+    /// more detail pictures."
     private var photoGrid: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let rows = allPhotoPaths.chunked(into: 4)
+        return VStack(alignment: .leading, spacing: 12) {
             Text("Media")
                 .font(.headline)
                 .foregroundStyle(.white)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180, maximum: 220), spacing: 12)], spacing: 12) {
-                if let path = storeInfo?.headerImagePath {
-                    photoThumbnail(path)
-                }
-                ForEach(storeInfo?.screenshotPaths ?? [], id: \.self) { path in
-                    photoThumbnail(path)
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(rows.indices, id: \.self) { rowIndex in
+                    HStack(spacing: 12) {
+                        ForEach(rows[rowIndex], id: \.self) { path in
+                            photoThumbnail(path)
+                        }
+                    }
                 }
             }
         }
@@ -1064,8 +1078,7 @@ struct GameDetailView: View {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(height: 110)
-                    .frame(maxWidth: .infinity)
+                    .frame(width: 210, height: 120)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(RoundedRectangle(cornerRadius: 10))
                     .onTapGesture { expandedImagePath = path }
@@ -1101,66 +1114,6 @@ struct GameDetailView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { expandedImagePath = nil }
-    }
-
-    /// Steam-storepage-style details - developer, publisher, release date, every genre and
-    /// category (not just the first few shown as header tags), size/build/engine, and a link to
-    /// the Metacritic review when there is one - "have way more info, make it like the steam
-    /// storepage type amount of info," per live feedback.
-    private var infoSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Details")
-                .font(.headline)
-                .foregroundStyle(.white)
-            VStack(alignment: .leading, spacing: 10) {
-                if let developers = storeInfo?.developers, !developers.isEmpty {
-                    infoRow("Developer", developers.joined(separator: ", "))
-                }
-                if let publishers = storeInfo?.publishers, !publishers.isEmpty, publishers != storeInfo?.developers {
-                    infoRow("Publisher", publishers.joined(separator: ", "))
-                }
-                if let releaseDate = storeInfo?.releaseDate {
-                    infoRow("Release Date", releaseDate)
-                }
-                if let genres = storeInfo?.genres, !genres.isEmpty {
-                    infoRow("Genre", genres.joined(separator: ", "))
-                }
-                if let categories = storeInfo?.categories, !categories.isEmpty {
-                    infoRow("Features", categories.joined(separator: ", "))
-                }
-                if let size = game.sizeOnDisk {
-                    infoRow("Size", ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
-                }
-                if let build = game.buildID {
-                    infoRow("Build", build)
-                }
-                infoRow("Engine", engineBadgeText)
-                if let metacriticScore = storeInfo?.metacriticScore, let urlString = storeInfo?.metacriticURL, let url = URL(string: urlString) {
-                    Link(destination: url) {
-                        Label("Metacritic score: \(metacriticScore)", systemImage: "arrow.up.right.square")
-                    }
-                    .font(.callout)
-                    .foregroundStyle(Color.accentColor)
-                }
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
-        }
-    }
-
-    private func infoRow(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Text(label.uppercased())
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.45))
-                .frame(width: 110, alignment: .leading)
-            Text(value)
-                .font(.callout)
-                .foregroundStyle(.white.opacity(0.9))
-            Spacer()
-        }
     }
 
     /// Same green/yellow/red convention Steam's own store pages use for Metacritic scores.
@@ -1201,11 +1154,6 @@ struct GameDetailView: View {
         return parts.joined(separator: "  ·  ")
     }
 
-
-    private var engineBadgeText: String {
-        let config = model.config(for: game)
-        return config.d3dMetal ? "D3DMetal" : (config.dxvk ? "DXVK" : (config.dxmt ? "DXMT" : "Default"))
-    }
 
     private var actionRow: some View {
         HStack(spacing: 12) {
