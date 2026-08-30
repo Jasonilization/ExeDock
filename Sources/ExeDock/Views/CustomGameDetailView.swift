@@ -23,6 +23,8 @@ struct CustomGameDetailView: View {
     @LocalState private var showingSettings = false
     @LocalState private var showingEdit = false
     @LocalState private var focusedActionIndex = 0
+    /// Non-nil while a photo is shown full-size over everything else.
+    @LocalState private var expandedImagePath: String?
 
     private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.id] }
     private var hasCustomSettings: Bool { model.perGameConfigs[game.id] != nil }
@@ -47,49 +49,51 @@ struct CustomGameDetailView: View {
             VStack(alignment: .leading, spacing: 0) {
                 closeButton
                 ScrollView {
-                    HStack(alignment: .top, spacing: 28) {
-                        VStack(alignment: .leading, spacing: 18) {
-                            header
-                            if let description = game.effectiveAboutTheGame {
-                                Text(description)
-                                    .font(.body)
-                                    .foregroundStyle(.white.opacity(0.85))
-                            }
-                            metaRow
-                            if isMissing {
-                                Label("Game location unavailable", systemImage: "exclamationmark.triangle.fill")
-                                    .font(.callout)
-                                    .foregroundStyle(.orange)
-                            }
-                            actionRow
+                    VStack(alignment: .leading, spacing: 22) {
+                        header
+                        if isMissing {
+                            Label("Game location unavailable", systemImage: "exclamationmark.triangle.fill")
+                                .font(.callout)
+                                .foregroundStyle(.orange)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
+                        actionRow
+                        descriptionCard
                         if hasPhotos {
-                            photoColumn
-                                .frame(width: 260)
+                            photoGrid
                         }
+                        infoSection
                     }
                     .padding(32)
-                    .frame(maxWidth: 820, alignment: .leading)
+                    .frame(maxWidth: 1040, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .clipped()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            if let expandedImagePath {
+                imageLightbox(expandedImagePath)
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .colorScheme(.dark)
         .onExitCommand { onClose() }
         .onChange(of: controllerObserver.directionPress?.token) { _ in
-            guard let direction = controllerObserver.directionPress?.direction else { return }
+            guard expandedImagePath == nil, let direction = controllerObserver.directionPress?.direction else { return }
             moveActionFocus(direction)
         }
         .onChange(of: controllerObserver.primaryPress) { _ in
+            guard expandedImagePath == nil else { return }
             activateFocusedAction()
         }
         .onChange(of: controllerObserver.secondaryPress) { _ in
-            onClose()
+            if expandedImagePath != nil {
+                expandedImagePath = nil
+            } else {
+                onClose()
+            }
         }
         .sheet(isPresented: $showingEdit) {
             EditCustomGameSheet(game: game)
@@ -173,37 +177,93 @@ struct CustomGameDetailView: View {
         }
     }
 
-    /// True whenever there's actually something to put in `photoColumn`.
+    /// The full description, styled as its own card - matches `GameDetailView`'s own treatment.
+    @ViewBuilder
+    private var descriptionCard: some View {
+        if let description = game.effectiveAboutTheGame {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("About This Game")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Text(description)
+                    .font(.body)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .lineSpacing(4)
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+        }
+    }
+
+    /// True whenever there's actually something to put in `photoGrid`.
     private var hasPhotos: Bool {
         game.effectiveArtworkPath != nil || !game.discovered.steamScreenshotPaths.isEmpty
     }
 
-    /// Every "game photo" (header art, then screenshots) stacked in one column on the right side of
-    /// the view - same layout as `GameDetailView`'s own photo column, for the same reason ("for game
-    /// photos... move to the right," and "custom game needs everything a steam game has too," per
-    /// live feedback). `.aspectRatio(contentMode: .fit)` can never crop or stretch an image
-    /// regardless of its real aspect ratio - the fix for a real, separate "it looks squashed"
-    /// complaint that a fixed width+height frame with `.fill` risked.
-    private var photoColumn: some View {
-        VStack(spacing: 12) {
-            if let path = game.effectiveArtworkPath, let image = LocalImageCache.image(atPath: path) {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.15)))
-            }
-            ForEach(game.discovered.steamScreenshotPaths, id: \.self) { path in
-                if let image = LocalImageCache.image(atPath: path) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+    /// Every "game photo" laid out in a real grid - multiple per row, visible without scrolling -
+    /// matches `GameDetailView`'s own treatment (see that view's doc comment for the full reasoning
+    /// behind fixed-size cropped thumbnails here plus a tap-to-expand, uncropped lightbox).
+    private var photoGrid: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Media")
+                .font(.headline)
+                .foregroundStyle(.white)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180, maximum: 220), spacing: 12)], spacing: 12) {
+                if let path = game.effectiveArtworkPath {
+                    photoThumbnail(path)
+                }
+                ForEach(game.discovered.steamScreenshotPaths, id: \.self) { path in
+                    photoThumbnail(path)
                 }
             }
         }
+    }
+
+    private func photoThumbnail(_ path: String) -> some View {
+        Group {
+            if let image = LocalImageCache.image(atPath: path) {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: 110)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
+                    .onTapGesture { expandedImagePath = path }
+            }
+        }
+    }
+
+    /// A full-size, uncropped look at one photo - tap anywhere (or press Escape/B) to dismiss.
+    private func imageLightbox(_ path: String) -> some View {
+        ZStack {
+            Color.black.opacity(0.92).ignoresSafeArea()
+            if let image = LocalImageCache.image(atPath: path) {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .padding(60)
+            }
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        expandedImagePath = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.white, .black.opacity(0.4))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(24)
+                }
+                Spacer()
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { expandedImagePath = nil }
     }
 
     private func metacriticBadge(_ score: Int) -> some View {
@@ -241,23 +301,62 @@ struct CustomGameDetailView: View {
     }
 
 
-    private var metaRow: some View {
-        HStack(spacing: 28) {
-            metaItem("Engine", engineBadgeText)
-            if let fileVersion = game.discovered.fileVersion {
-                metaItem("Version", fileVersion)
+    /// Steam-storepage-style details, same treatment as `GameDetailView`'s own `infoSection` -
+    /// "have way more info, make it like the steam storepage type amount of info," per live
+    /// feedback. Custom games don't have Steam's own size-on-disk/build-id fields, so this shows
+    /// whatever's genuinely known instead: developer/publisher/release date/genre/features when a
+    /// confident Steam match found them, the exe's own file version, and the current engine.
+    private var infoSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Details")
+                .font(.headline)
+                .foregroundStyle(.white)
+            VStack(alignment: .leading, spacing: 10) {
+                let developers = game.discovered.steamDevelopers.isEmpty ? [game.discovered.publisher].compactMap { $0 } : game.discovered.steamDevelopers
+                if !developers.isEmpty {
+                    infoRow("Developer", developers.joined(separator: ", "))
+                }
+                if !game.discovered.steamPublishers.isEmpty, game.discovered.steamPublishers != developers {
+                    infoRow("Publisher", game.discovered.steamPublishers.joined(separator: ", "))
+                }
+                if let releaseDate = game.discovered.steamReleaseDate {
+                    infoRow("Release Date", releaseDate)
+                }
+                if !game.discovered.steamGenres.isEmpty {
+                    infoRow("Genre", game.discovered.steamGenres.joined(separator: ", "))
+                }
+                if !game.discovered.steamCategories.isEmpty {
+                    infoRow("Features", game.discovered.steamCategories.joined(separator: ", "))
+                }
+                if let fileVersion = game.discovered.fileVersion {
+                    infoRow("Version", fileVersion)
+                }
+                infoRow("Engine", engineBadgeText)
+                if let metacriticScore = game.discovered.steamMetacriticScore, let urlString = game.discovered.steamMetacriticURL, let url = URL(string: urlString) {
+                    Link(destination: url) {
+                        Label("Metacritic score: \(metacriticScore)", systemImage: "arrow.up.right.square")
+                    }
+                    .font(.callout)
+                    .foregroundStyle(Color.accentColor)
+                }
             }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
         }
     }
 
-    private func metaItem(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+    private func infoRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
             Text(label.uppercased())
-                .font(.caption2.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.45))
+                .frame(width: 110, alignment: .leading)
             Text(value)
-                .font(.callout.weight(.medium))
+                .font(.callout)
                 .foregroundStyle(.white.opacity(0.9))
+            Spacer()
         }
     }
 

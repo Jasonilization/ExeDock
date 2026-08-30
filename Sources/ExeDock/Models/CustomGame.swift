@@ -21,7 +21,10 @@ struct DiscoveredMetadata: Codable, Equatable {
     var steamGenres: [String] = []
     var steamReleaseDate: String?
     var steamDevelopers: [String] = []
+    var steamPublishers: [String] = []
+    var steamCategories: [String] = []
     var steamMetacriticScore: Int?
+    var steamMetacriticURL: String?
 }
 
 /// User edits from "Edit Game" - every field `nil` means "use whatever was discovered instead."
