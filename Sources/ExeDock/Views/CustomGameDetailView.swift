@@ -61,7 +61,6 @@ struct CustomGameDetailView: View {
                         if hasPhotos {
                             photoGrid
                         }
-                        infoSection
                     }
                     .padding(32)
                     .frame(maxWidth: 1040, alignment: .leading)
@@ -197,25 +196,35 @@ struct CustomGameDetailView: View {
         }
     }
 
-    /// True whenever there's actually something to put in `photoGrid`.
-    private var hasPhotos: Bool {
-        game.effectiveArtworkPath != nil || !game.discovered.steamScreenshotPaths.isEmpty
+    /// Header art first, then every screenshot - the one list both `hasPhotos` and `photoGrid`
+    /// build rows from, matching `GameDetailView`'s own `allPhotoPaths`.
+    private var allPhotoPaths: [String] {
+        var paths: [String] = []
+        if let artworkPath = game.effectiveArtworkPath { paths.append(artworkPath) }
+        paths.append(contentsOf: game.discovered.steamScreenshotPaths)
+        return paths
     }
 
-    /// Every "game photo" laid out in a real grid - multiple per row, visible without scrolling -
-    /// matches `GameDetailView`'s own treatment (see that view's doc comment for the full reasoning
-    /// behind fixed-size cropped thumbnails here plus a tap-to-expand, uncropped lightbox).
+    /// True whenever there's actually something to put in `photoGrid`.
+    private var hasPhotos: Bool { !allPhotoPaths.isEmpty }
+
+    /// Every "game photo" laid out in explicit, fixed-size rows - matches `GameDetailView`'s own
+    /// treatment exactly (see that view's doc comment for the full reasoning: fixed width *and*
+    /// height in one `.frame()` call before `.fill` crops it, so every photo renders at the same
+    /// size regardless of its own screenshot's native aspect ratio).
     private var photoGrid: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let rows = allPhotoPaths.chunked(into: 4)
+        return VStack(alignment: .leading, spacing: 12) {
             Text("Media")
                 .font(.headline)
                 .foregroundStyle(.white)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180, maximum: 220), spacing: 12)], spacing: 12) {
-                if let path = game.effectiveArtworkPath {
-                    photoThumbnail(path)
-                }
-                ForEach(game.discovered.steamScreenshotPaths, id: \.self) { path in
-                    photoThumbnail(path)
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(rows.indices, id: \.self) { rowIndex in
+                    HStack(spacing: 12) {
+                        ForEach(rows[rowIndex], id: \.self) { path in
+                            photoThumbnail(path)
+                        }
+                    }
                 }
             }
         }
@@ -227,8 +236,7 @@ struct CustomGameDetailView: View {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(height: 110)
-                    .frame(maxWidth: .infinity)
+                    .frame(width: 210, height: 120)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(RoundedRectangle(cornerRadius: 10))
                     .onTapGesture { expandedImagePath = path }
@@ -300,70 +308,6 @@ struct CustomGameDetailView: View {
         return parts.joined(separator: "  ·  ")
     }
 
-
-    /// Steam-storepage-style details, same treatment as `GameDetailView`'s own `infoSection` -
-    /// "have way more info, make it like the steam storepage type amount of info," per live
-    /// feedback. Custom games don't have Steam's own size-on-disk/build-id fields, so this shows
-    /// whatever's genuinely known instead: developer/publisher/release date/genre/features when a
-    /// confident Steam match found them, the exe's own file version, and the current engine.
-    private var infoSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Details")
-                .font(.headline)
-                .foregroundStyle(.white)
-            VStack(alignment: .leading, spacing: 10) {
-                let developers = game.discovered.steamDevelopers.isEmpty ? [game.discovered.publisher].compactMap { $0 } : game.discovered.steamDevelopers
-                if !developers.isEmpty {
-                    infoRow("Developer", developers.joined(separator: ", "))
-                }
-                if !game.discovered.steamPublishers.isEmpty, game.discovered.steamPublishers != developers {
-                    infoRow("Publisher", game.discovered.steamPublishers.joined(separator: ", "))
-                }
-                if let releaseDate = game.discovered.steamReleaseDate {
-                    infoRow("Release Date", releaseDate)
-                }
-                if !game.discovered.steamGenres.isEmpty {
-                    infoRow("Genre", game.discovered.steamGenres.joined(separator: ", "))
-                }
-                if !game.discovered.steamCategories.isEmpty {
-                    infoRow("Features", game.discovered.steamCategories.joined(separator: ", "))
-                }
-                if let fileVersion = game.discovered.fileVersion {
-                    infoRow("Version", fileVersion)
-                }
-                infoRow("Engine", engineBadgeText)
-                if let metacriticScore = game.discovered.steamMetacriticScore, let urlString = game.discovered.steamMetacriticURL, let url = URL(string: urlString) {
-                    Link(destination: url) {
-                        Label("Metacritic score: \(metacriticScore)", systemImage: "arrow.up.right.square")
-                    }
-                    .font(.callout)
-                    .foregroundStyle(Color.accentColor)
-                }
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
-        }
-    }
-
-    private func infoRow(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Text(label.uppercased())
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.45))
-                .frame(width: 110, alignment: .leading)
-            Text(value)
-                .font(.callout)
-                .foregroundStyle(.white.opacity(0.9))
-            Spacer()
-        }
-    }
-
-    private var engineBadgeText: String {
-        let config = model.config(forID: game.id)
-        return config.d3dMetal ? "D3DMetal" : (config.dxvk ? "DXVK" : (config.dxmt ? "DXMT" : "Default"))
-    }
 
     private var actionRow: some View {
         HStack(spacing: 12) {

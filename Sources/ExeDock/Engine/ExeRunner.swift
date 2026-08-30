@@ -32,6 +32,14 @@ enum ExeRunner {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: wineBinary)
         process.arguments = [exePath] + arguments
+        // Matches what actually double-clicking an exe in Explorer (or a Sikarugir wrapper app's
+        // own launch script) does: run with the exe's own folder as the working directory. A real,
+        // confirmed cause of custom games (Unreal Engine titles especially, which often resolve
+        // their own Content/Saved folders relative to the process's working directory, not just the
+        // exe's location) launching and immediately quitting through ExeDock - without this, the
+        // wine process inherited ExeDock's own working directory instead, which the game's own
+        // asset-loading code was never expecting.
+        process.currentDirectoryURL = URL(fileURLWithPath: (exePath as NSString).deletingLastPathComponent)
         var env = ProcessInfo.processInfo.environment
         env["WINEPREFIX"] = bottle.prefixPath
         if let wrapperLibraryPath {
