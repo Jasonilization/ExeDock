@@ -26,6 +26,7 @@ struct GameModeView: View {
     @AppStorage("com.exedock.advancedMode") private var isAdvancedMode = false
     @LocalState private var search = ""
     @LocalState private var showingSettingsSheet = false
+    @LocalState private var showingAddGameSheet = false
     @LocalState private var sortOption: GameSortOption = .name
     @LocalState private var launchOverlayGame: SteamGame?
     @LocalState private var showingControllerMode = false
@@ -184,6 +185,9 @@ struct GameModeView: View {
         .sheet(isPresented: $showingSettingsSheet) {
             DefaultSettingsSheet(isAdvancedMode: $isAdvancedMode)
         }
+        .sheet(isPresented: $showingAddGameSheet) {
+            AddGameSheet()
+        }
         .onChange(of: model.steamGames) { _ in
             runningTracker.syncWatchedGames(watchTargets)
         }
@@ -256,14 +260,19 @@ struct GameModeView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            headerIconButton(systemImage: "arrow.clockwise", help: "Refresh", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(0)) {
+            headerIconButton(systemImage: "plus", help: "Add Game", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(0)) {
+                showingAddGameSheet = true
+            }
+            .keyboardShortcut("n", modifiers: .command)
+
+            headerIconButton(systemImage: "arrow.clockwise", help: "Refresh", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(1)) {
                 model.refreshSteamGames()
                 model.refreshSteamProfile()
             }
             .keyboardShortcut("r", modifiers: .command)
             .disabled(model.isLoadingSteamGames)
 
-            headerIconButton(systemImage: "gearshape", help: "Settings", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(1)) {
+            headerIconButton(systemImage: "gearshape", help: "Settings", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(2)) {
                 showingSettingsSheet = true
             }
         }
@@ -440,7 +449,7 @@ struct GameModeView: View {
         case .toolbar(let toolbarIndex):
             switch direction {
             case .left: focusedTarget = .toolbar(max(0, toolbarIndex - 1))
-            case .right: focusedTarget = .toolbar(min(1, toolbarIndex + 1))
+            case .right: focusedTarget = .toolbar(min(2, toolbarIndex + 1))
             case .down: focusedTarget = filteredGames.isEmpty ? current : .card(0)
             case .up: break
             }
@@ -469,6 +478,8 @@ struct GameModeView: View {
     private func activateFocusedTarget() {
         switch focusedTarget {
         case .toolbar(0):
+            showingAddGameSheet = true
+        case .toolbar(1):
             guard !model.isLoadingSteamGames else { return }
             model.refreshSteamGames()
             model.refreshSteamProfile()
