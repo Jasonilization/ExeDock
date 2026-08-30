@@ -56,10 +56,18 @@ struct CustomGameDetailView: View {
                                 .font(.callout)
                                 .foregroundStyle(.orange)
                         }
-                        actionRow
-                        descriptionCard
-                        if hasPhotos {
-                            photoGrid
+                        // Photos sit in their own column to the right of the text, not stacked
+                        // below it - "pictures should be at the RIGHT," per live feedback.
+                        HStack(alignment: .top, spacing: 24) {
+                            VStack(alignment: .leading, spacing: 22) {
+                                actionRow
+                                descriptionCard
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            if hasPhotos {
+                                photoGrid
+                            }
                         }
                     }
                     .padding(32)
@@ -208,19 +216,20 @@ struct CustomGameDetailView: View {
     /// True whenever there's actually something to put in `photoGrid`.
     private var hasPhotos: Bool { !allPhotoPaths.isEmpty }
 
-    /// Every "game photo" laid out in explicit, fixed-size rows - matches `GameDetailView`'s own
+    /// A fixed-width column of photos to the right of the text - matches `GameDetailView`'s own
     /// treatment exactly (see that view's doc comment for the full reasoning: fixed width *and*
     /// height in one `.frame()` call before `.fill` crops it, so every photo renders at the same
-    /// size regardless of its own screenshot's native aspect ratio).
+    /// size regardless of its own screenshot's native aspect ratio) - "pictures should be at the
+    /// RIGHT," per live feedback.
     private var photoGrid: some View {
-        let rows = allPhotoPaths.chunked(into: 4)
+        let rows = allPhotoPaths.chunked(into: 2)
         return VStack(alignment: .leading, spacing: 12) {
             Text("Media")
                 .font(.headline)
                 .foregroundStyle(.white)
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 ForEach(rows.indices, id: \.self) { rowIndex in
-                    HStack(spacing: 12) {
+                    HStack(spacing: 10) {
                         ForEach(rows[rowIndex], id: \.self) { path in
                             photoThumbnail(path)
                         }
@@ -228,6 +237,7 @@ struct CustomGameDetailView: View {
                 }
             }
         }
+        .frame(width: 300, alignment: .leading)
     }
 
     private func photoThumbnail(_ path: String) -> some View {
@@ -236,7 +246,7 @@ struct CustomGameDetailView: View {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 210, height: 120)
+                    .frame(width: 145, height: 88)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(RoundedRectangle(cornerRadius: 10))
                     .onTapGesture { expandedImagePath = path }
