@@ -26,15 +26,21 @@ final class RunningGameTracker: ObservableObject {
     @Published private(set) var runningGames: [String: RunningProcessInfo] = [:]
 
     private var pollTask: Task<Void, Never>?
-    private var watchedGames: [String: String] = [:] // appID -> installDir
+    private var watchedGames: [String: String] = [:] // id -> matchFragment
     private var knownStartTimes: [String: Date] = [:]
 
     private init() {}
 
-    /// Replaces the full watch list - call with the dashboard's current game list. Games no longer
+    /// Replaces the full watch list - call with every library item currently on the dashboard
+    /// (Steam and custom games alike). `id` is whatever that item is keyed by elsewhere
+    /// (`SteamGame.appID` / `CustomGame.id`); `matchFragment` is the path text `findRunningPIDs`
+    /// looks for in each process's command line, tried with both `/` and `\` separators - Steam
+    /// call sites pass `"steamapps/common/<installDir>"` (identical to this tracker's previous,
+    /// Steam-only behavior), custom games pass their exe's own containing folder name, since they
+    /// aren't necessarily installed anywhere near a `steamapps` folder at all. Games no longer
     /// present are dropped from `runningGames` immediately rather than waiting for the next poll.
-    func syncWatchedGames(_ games: [SteamGame]) {
-        let newWatch = Dictionary(uniqueKeysWithValues: games.map { ($0.appID, $0.installDir) })
+    func syncWatchedGames(_ items: [(id: String, matchFragment: String)]) {
+        let newWatch = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0.matchFragment) })
         watchedGames = newWatch
         runningGames = runningGames.filter { newWatch[$0.key] != nil }
         knownStartTimes = knownStartTimes.filter { newWatch[$0.key] != nil }
@@ -45,6 +51,13 @@ final class RunningGameTracker: ObservableObject {
         } else {
             ensurePolling()
         }
+    }
+
+    /// Convenience for the common Steam-only case (still used wherever custom games aren't in play
+    /// yet) - identical behavior to calling `syncWatchedGames` with each game's own
+    /// `steamapps/common/<installDir>` fragment.
+    func syncWatchedGames(_ games: [SteamGame]) {
+        syncWatchedGames(games.map { (id: $0.appID, matchFragment: "steamapps/common/\($0.installDir)") })
     }
 
     private func ensurePolling() {
@@ -65,21 +78,22 @@ final class RunningGameTracker: ObservableObject {
         }.value
         guard !Task.isCancelled else { return }
 
-        for (appID, _) in targets {
-            if let pid = matches[appID] {
-                let startedAt = knownStartTimes[appID] ?? Date()
-                knownStartTimes[appID] = startedAt
-                runningGames[appID] = RunningProcessInfo(pid: pid, startedAt: startedAt)
+        for (id, _) in targets {
+            if let pid = matches[id] {
+                let startedAt = knownStartTimes[id] ?? Date()
+                knownStartTimes[id] = startedAt
+                runningGames[id] = RunningProcessInfo(pid: pid, startedAt: startedAt)
             } else {
-                runningGames.removeValue(forKey: appID)
-                knownStartTimes.removeValue(forKey: appID)
+                runningGames.removeValue(forKey: id)
+                knownStartTimes.removeValue(forKey: id)
             }
         }
     }
 
     /// Off the main actor: shells out to `ps`, same pattern `ExeRunner`/`SikarugirEngine` already
-    /// use for `tar`/`cp`. `installDir` (e.g. "Hollow Knight") is more unique than the exe's own
-    /// basename, so it's what's matched against each line's command text.
+    /// use for `tar`/`cp`. Each `matchFragment` (e.g. "steamapps/common/Hollow Knight", or just
+    /// "Undertale" for a custom game) is checked with both path separators, since Wine's own command
+    /// lines can show either depending on how the path was passed through.
     nonisolated private static func findRunningPIDs(for targets: [String: String]) -> [String: Int32] {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/ps")
@@ -94,9 +108,9 @@ final class RunningGameTracker: ObservableObject {
 
         let lines = output.split(separator: "\n", omittingEmptySubsequences: true)
         var results: [String: Int32] = [:]
-        for (appID, installDir) in targets {
-            let backslashFragment = "steamapps\\common\\\(installDir)\\".lowercased()
-            let slashFragment = "steamapps/common/\(installDir)/".lowercased()
+        for (id, matchFragment) in targets {
+            let backslashFragment = (matchFragment.replacingOccurrences(of: "/", with: "\\") + "\\").lowercased()
+            let slashFragment = (matchFragment + "/").lowercased()
             guard let line = lines.first(where: {
                 let lower = $0.lowercased()
                 return lower.contains(backslashFragment) || lower.contains(slashFragment)
@@ -104,7 +118,7 @@ final class RunningGameTracker: ObservableObject {
 
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard let spaceIndex = trimmed.firstIndex(of: " "), let pid = Int32(trimmed[trimmed.startIndex..<spaceIndex]) else { continue }
-            results[appID] = pid
+            results[id] = pid
         }
         return results
     }

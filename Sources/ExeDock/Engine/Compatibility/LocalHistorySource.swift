@@ -9,8 +9,8 @@ import Foundation
 struct LocalHistorySource: CompatibilitySource {
     let name = "This Mac's launch history"
 
-    func fetchReports(for game: SteamGame) async -> [CompatibilityReport] {
-        let records = LocalOutcomeTracker.records(for: game.appID)
+    func fetchReports(id: String, name: String) async -> [CompatibilityReport] {
+        let records = LocalOutcomeTracker.records(for: id)
         guard !records.isEmpty else { return [] }
 
         let successfulConfigs = records.filter { !$0.launchErrored }.map(\.config)

@@ -34,37 +34,10 @@ enum CDriveScanner {
         [BottleManager.shared.defaultBottle, BottleManager.shared.steamBottle] + BottleManager.shared.discoverSikarugirWrapperBottles()
     }
 
+    /// Prefers an exe whose name matches the folder name, else falls back to the largest exe -
+    /// delegates to `ExecutableHeuristics`, shared with `SteamLibrary`'s own icon-exe lookup and
+    /// `CustomGameFolderScanner`.
     private static func mainExecutable(inFolder folder: String, folderName: String) -> String? {
-        let fm = FileManager.default
-        guard let enumerator = fm.enumerator(atPath: folder) else { return nil }
-        var candidates: [(path: String, size: Int)] = []
-        for case let relativePath as String in enumerator {
-            if enumerator.level > 3 {
-                enumerator.skipDescendants()
-                continue
-            }
-            guard relativePath.lowercased().hasSuffix(".exe") else { continue }
-            let name = (relativePath as NSString).lastPathComponent.lowercased()
-            if name.hasPrefix("unins") || name.hasPrefix("uninstall") || name.contains("setup")
-                || name.contains("updater") || name.contains("crashhandler") {
-                continue
-            }
-            let fullPath = (folder as NSString).appendingPathComponent(relativePath)
-            let attrs = try? fm.attributesOfItem(atPath: fullPath)
-            let size = (attrs?[.size] as? Int) ?? 0
-            candidates.append((fullPath, size))
-        }
-        guard !candidates.isEmpty else { return nil }
-
-        // Prefer an exe whose name matches the folder name, else fall back to the largest exe.
-        let normalizedFolder = folderName.lowercased().replacingOccurrences(of: " ", with: "")
-        if let matching = candidates.first(where: {
-            let exeName = (($0.path as NSString).lastPathComponent as NSString)
-                .deletingPathExtension.lowercased().replacingOccurrences(of: " ", with: "")
-            return exeName == normalizedFolder
-        }) {
-            return matching.path
-        }
-        return candidates.max(by: { $0.size < $1.size })?.path
+        ExecutableHeuristics.bestGuessExecutable(inFolder: folder, preferredName: folderName, maxDepth: 3)
     }
 }

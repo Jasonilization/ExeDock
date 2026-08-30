@@ -9,12 +9,12 @@ struct AppleGamingWikiSource: CompatibilitySource {
     let name = "AppleGamingWiki"
     private static let base = "https://www.applegamingwiki.com/w/api.php"
 
-    func fetchReports(for game: SteamGame) async -> [CompatibilityReport] {
-        let guessedTitle = Self.slugify(game.name)
+    func fetchReports(id: String, name: String) async -> [CompatibilityReport] {
+        let guessedTitle = Self.slugify(name)
         if let report = await fetchPage(title: guessedTitle) {
             return [report]
         }
-        guard let foundTitle = await searchForTitle(game.name), foundTitle != guessedTitle else { return [] }
+        guard let foundTitle = await searchForTitle(name), foundTitle != guessedTitle else { return [] }
         if let report = await fetchPage(title: foundTitle) {
             return [report]
         }

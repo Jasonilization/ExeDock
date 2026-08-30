@@ -21,6 +21,7 @@ final class AppModel: ObservableObject {
     enum LaunchTarget: Equatable {
         case steam
         case game(String)
+        case custom(String)
     }
 
     @Published var detectedApps: [DetectedApp] = []
@@ -38,6 +39,10 @@ final class AppModel: ObservableObject {
     @Published var steamGames: [SteamGame] = []
     @Published var isLoadingSteamGames = false
     @Published var steamProfile: SteamProfile?
+    /// Manually-imported games (see `CustomGameStore`) - loaded once at startup, kept in sync with
+    /// disk by the add/update/remove methods below rather than a blanket `didSet` save, since
+    /// `CustomGameStore`'s own API is per-record CRUD, not "rewrite everything every mutation."
+    @Published var customGames: [CustomGame] = []
     /// Non-nil while a Steam/game launch is in flight - drives the spinner on whichever control
     /// started it, and blocks a second launch from starting until this clears (see `launchSteam`).
     @Published var launchingTarget: LaunchTarget?
@@ -70,6 +75,7 @@ final class AppModel: ObservableObject {
         refreshBottlesAndApps()
         refreshSteamGames()
         refreshSteamProfile()
+        customGames = CustomGameStore.loadAll()
     }
 
     func refreshBottlesAndApps() {
@@ -104,15 +110,23 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Settings that actually apply to `game` - its own override if it has one, otherwise the
-    /// shared default. Advanced Mode is the only place a user can create an override.
-    func config(for game: SteamGame) -> GameModeConfig {
-        perGameConfigs[game.appID] ?? gameModeConfig
+    /// Settings that actually apply to a given library item - its own override if it has one,
+    /// otherwise the shared default. Advanced Mode is the only place a user can create an override.
+    /// Keyed by plain `id` so the exact same storage/lookup works for both Steam games (appID) and
+    /// custom games (their own generated id) - see the `SteamGame`/`CustomGame` overloads below.
+    func config(forID id: String) -> GameModeConfig {
+        perGameConfigs[id] ?? gameModeConfig
     }
 
-    func setOverride(_ config: GameModeConfig?, for game: SteamGame) {
-        perGameConfigs[game.appID] = config
+    func setOverride(_ config: GameModeConfig?, forID id: String) {
+        perGameConfigs[id] = config
     }
+
+    func config(for game: SteamGame) -> GameModeConfig { config(forID: game.appID) }
+    func setOverride(_ config: GameModeConfig?, for game: SteamGame) { setOverride(config, forID: game.appID) }
+
+    func config(for game: CustomGame) -> GameModeConfig { config(forID: game.id) }
+    func setOverride(_ config: GameModeConfig?, for game: CustomGame) { setOverride(config, forID: game.id) }
 
     private func persistGameSettings() {
         GameSettingsStore.save(defaults: gameModeConfig, perGame: perGameConfigs)
@@ -281,5 +295,67 @@ final class AppModel: ObservableObject {
         } else {
             steamGames.removeAll { $0.appID.hasPrefix("SAMPLE-") }
         }
+    }
+
+    // MARK: - Custom (manually-imported) games
+
+    func addCustomGame(_ game: CustomGame) {
+        customGames.append(game)
+        CustomGameStore.add(game)
+    }
+
+    func updateCustomGame(_ game: CustomGame) {
+        guard let index = customGames.firstIndex(where: { $0.id == game.id }) else { return }
+        customGames[index] = game
+        CustomGameStore.update(game)
+    }
+
+    /// Only removes the library record - the referenced exe/folder on disk is never touched, per
+    /// spec. Also drops any per-game settings override, which is meaningless once the record itself
+    /// is gone.
+    func removeCustomGame(_ game: CustomGame) {
+        customGames.removeAll { $0.id == game.id }
+        CustomGameStore.remove(id: game.id)
+        perGameConfigs[game.id] = nil
+    }
+
+    /// Custom games are launched by running their own executable directly (unlike Steam games,
+    /// which always go through Steam itself - see `SteamGame.iconExePath`), using that game's own
+    /// settings override.
+    func launchCustomGame(_ game: CustomGame) {
+        guard launchingTarget == nil else { return }
+        guard FileManager.default.fileExists(atPath: game.exePath) else {
+            errorMessage = "\(game.effectiveName)'s executable can't be found anymore - use Locate Game to point Playdock at it again."
+            return
+        }
+        let bottle = resolvedBottle(forExePath: game.exePath)
+        let config = config(for: game)
+        launchingTarget = .custom(game.id)
+        statusMessage = "Launching \(game.effectiveName)…"
+        Task.detached(priority: .userInitiated) { [weak self] in
+            do {
+                try ExeRunner.run(
+                    exePath: game.exePath, in: bottle, arguments: game.launchArguments,
+                    extraEnvironment: config.environment, engineName: config.engineName
+                )
+                await MainActor.run { [weak self] in self?.statusMessage = "Launched \(game.effectiveName)" }
+            } catch {
+                await MainActor.run { [weak self] in self?.errorMessage = error.localizedDescription }
+            }
+            await MainActor.run { [weak self] in self?.launchingTarget = nil }
+        }
+    }
+
+    /// Finds whichever known bottle (Playdock's own, or a discovered read-only Sikarugir wrapper)
+    /// actually contains `exePath`, by path prefix - so a custom game imported from inside an
+    /// existing Wine prefix (e.g. something already installed via a Sikarugir wrapper app) launches
+    /// inside that same prefix, with whatever that program already has installed there, rather than
+    /// Playdock's own separate Default bottle which wouldn't have any of it. Falls back to
+    /// Playdock's own Default bottle for anything picked from outside every known bottle - the
+    /// common case, since most manually-imported games just sit somewhere plain on disk. (Wine
+    /// itself has no requirement that an exe physically live inside the prefix it runs under -
+    /// `ExeRunner` already passes an arbitrary host path straight through.)
+    private func resolvedBottle(forExePath exePath: String) -> Bottle {
+        CDriveScanner.allKnownBottles().first { exePath.hasPrefix($0.driveCPath) } ?? BottleManager.shared.defaultBottle
     }
 }
