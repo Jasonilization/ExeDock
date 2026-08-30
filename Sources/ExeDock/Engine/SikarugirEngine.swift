@@ -256,6 +256,26 @@ enum SikarugirEngine {
         try? fm.removeItem(atPath: stagingDir)
     }
 
+    /// The exact wine binary, its matching `lib` directory, and that same app's own `Frameworks` -
+    /// bundled inside one *specific* Sikarugir wrapper app - for running something that lives
+    /// inside that wrapper's own bottle. Confirmed live to matter, not just in theory: a real
+    /// wrapper app ("Subliminal") bundled `wine-9.0 (SikarugirCX 24.0.7)`, while ExeDock's own
+    /// cached engines were `wine-10.0 (Sikarugir)` - a genuinely different Wine build/fork, not
+    /// just a version bump. A game installed into that wrapper's bottle (confirmed: an Unreal
+    /// Engine 5 title) launched fine through the wrapper app itself but failed through ExeDock,
+    /// because ExeDock was silently substituting its own separately-managed engine instead of the
+    /// one that bottle was actually set up and tested with. `ExeRunner` prefers this over ExeDock's
+    /// own engine whenever the target bottle is a discovered wrapper bottle.
+    static func wrapperEngine(appPath: String) -> (wineBinary: String, libDir: String, frameworksDir: String)? {
+        let wineBinary = appPath + "/Contents/SharedSupport/wine/bin/wine"
+        guard FileManager.default.isExecutableFile(atPath: wineBinary) else { return nil }
+        return (
+            wineBinary: wineBinary,
+            libDir: appPath + "/Contents/SharedSupport/wine/lib",
+            frameworksDir: appPath + "/Contents/Frameworks"
+        )
+    }
+
     /// Last-resort fallback: read (never write) the wine binary bundled inside an already-installed
     /// Sikarugir wrapper app, if no engine tarball is cached yet.
     private static func findWrapperWineBinary() throws -> String {

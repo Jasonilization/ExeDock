@@ -6,7 +6,18 @@ enum ExeRunner {
 
     @discardableResult
     static func run(exePath: String, in bottle: Bottle, arguments: [String] = [], extraEnvironment: [String: String] = [:], engineName: String? = nil) throws -> Process {
-        let wineBinary = try SikarugirEngine.wineBinaryPath(engineName: engineName)
+        // Anything running inside a *specific* Sikarugir wrapper's own bottle runs under that
+        // wrapper's own bundled engine, not ExeDock's separately-managed one - see
+        // `SikarugirEngine.wrapperEngine`'s own doc comment for why that's not just a nicety.
+        let wineBinary: String
+        let wrapperLibraryPath: String?
+        if case .sikarugirWrapper(let appPath) = bottle.kind, let wrapperEngine = SikarugirEngine.wrapperEngine(appPath: appPath) {
+            wineBinary = wrapperEngine.wineBinary
+            wrapperLibraryPath = "\(wrapperEngine.frameworksDir):\(wrapperEngine.libDir)"
+        } else {
+            wineBinary = try SikarugirEngine.wineBinaryPath(engineName: engineName)
+            wrapperLibraryPath = nil
+        }
         if !bottle.isReadOnly {
             try BottleManager.shared.ensureInitialized(bottle, wineBinary: wineBinary)
         }
@@ -23,7 +34,11 @@ enum ExeRunner {
         process.arguments = [exePath] + arguments
         var env = ProcessInfo.processInfo.environment
         env["WINEPREFIX"] = bottle.prefixPath
-        for (key, value) in try SikarugirEngine.runtimeEnvironment(engineName: engineName) { env[key] = value }
+        if let wrapperLibraryPath {
+            env["DYLD_FALLBACK_LIBRARY_PATH"] = wrapperLibraryPath
+        } else {
+            for (key, value) in try SikarugirEngine.runtimeEnvironment(engineName: engineName) { env[key] = value }
+        }
         for (key, value) in extraEnvironment { env[key] = value }
         process.environment = env
         process.standardOutput = logHandle

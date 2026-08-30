@@ -11,6 +11,17 @@ struct DiscoveredMetadata: Codable, Equatable {
     var fileVersion: String?
     var steamArtworkPath: String?
     var steamDescription: String?
+    // Everything below only ever gets filled in alongside a confident Steam match - the same
+    // richer fields a real Steam game's own card/detail view already shows ("custom game needs
+    // everything a steam game has too," per live feedback), pulled from the exact same
+    // appdetails call that already provides the two fields above, so this costs nothing extra.
+    var steamAboutTheGame: String?
+    var steamBackgroundPath: String?
+    var steamScreenshotPaths: [String] = []
+    var steamGenres: [String] = []
+    var steamReleaseDate: String?
+    var steamDevelopers: [String] = []
+    var steamMetacriticScore: Int?
 }
 
 /// User edits from "Edit Game" - every field `nil` means "use whatever was discovered instead."
@@ -56,6 +67,14 @@ struct CustomGame: Codable, Identifiable, Equatable {
 
     var effectiveArtworkPath: String? {
         overrides.artworkPath ?? discovered.steamArtworkPath
+    }
+
+    /// The full "About This Game" text when a confident Steam match found one, falling back to
+    /// whatever `effectiveDescription` already resolves to (the short blurb, or the exe's own
+    /// FileDescription) for anything without one.
+    var effectiveAboutTheGame: String? {
+        let text = overrides.description ?? discovered.steamAboutTheGame ?? effectiveDescription
+        return (text?.isEmpty == false) ? text : nil
     }
 
     var launchArguments: [String] {

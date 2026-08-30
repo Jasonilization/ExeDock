@@ -15,9 +15,11 @@ struct CustomGameCardView: View {
     let isAdvancedMode: Bool
     let artworkHeight: CGFloat
     let isFocused: Bool
+    let onOpenDetail: () -> Void
 
     @LocalState private var showingSettings = false
     @LocalState private var showingEdit = false
+    @LocalState private var isHoveringArtwork = false
 
     private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.id] }
     private var hasCustomSettings: Bool { model.perGameConfigs[game.id] != nil }
@@ -62,6 +64,9 @@ struct CustomGameCardView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
+                if game.discovered.steamMetacriticScore != nil || game.discovered.steamGenres.first != nil {
+                    detailsRow
+                }
                 if isMissing {
                     Label("Game location unavailable", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
@@ -78,20 +83,7 @@ struct CustomGameCardView: View {
                             .buttonStyle(.bordered)
                     }
                 } else {
-                    Button {
-                        model.launchCustomGame(game)
-                    } label: {
-                        if model.launchingTarget == .custom(game.id) {
-                            HStack(spacing: 8) {
-                                ProgressView().controlSize(.small).tint(.white)
-                                Text("Launching…")
-                            }
-                        } else {
-                            Text("Launch")
-                        }
-                    }
-                    .buttonStyle(.big)
-                    .disabled(model.launchingTarget != nil)
+                    openDetailHint
                 }
             }
             .padding(20)
@@ -99,7 +91,26 @@ struct CustomGameCardView: View {
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.quaternary))
         .focusRing(isFocused)
+        // Tapping the card opens the full detail view rather than launching straight away - same
+        // pattern as GameCardView, for the same reason (see that view's own comment on why a plain
+        // single-tap gesture here is safe alongside the nested gearshape Button).
+        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .onTapGesture { onOpenDetail() }
         .contextMenu {
+            Button {
+                onOpenDetail()
+            } label: {
+                Label("View Details", systemImage: "info.circle")
+            }
+            if runningInfo == nil, !isMissing {
+                Button {
+                    model.launchCustomGame(game)
+                } label: {
+                    Label("Launch", systemImage: "play.fill")
+                }
+                .disabled(model.launchingTarget != nil)
+            }
+            Divider()
             Button {
                 model.revealInFinder(game.exePath)
             } label: {
@@ -116,6 +127,11 @@ struct CustomGameCardView: View {
             } label: {
                 Label("Edit", systemImage: "pencil")
             }
+            Button {
+                refreshMetadata()
+            } label: {
+                Label("Refresh Metadata", systemImage: "arrow.clockwise")
+            }
             Divider()
             Button(role: .destructive) {
                 model.removeCustomGame(game)
@@ -131,6 +147,49 @@ struct CustomGameCardView: View {
         }
     }
 
+    /// Mirrors `GameCardView`'s own metacritic-badge-plus-genre treatment - the same green/yellow/
+    /// red Steam convention - so a custom game with a confident Steam match looks just as much a
+    /// "real" library entry as an actual Steam game does.
+    /// Replaces the old inline Launch button - launching now only happens from the full detail
+    /// view, reached by tapping the card, same as a Steam game's card.
+    private var openDetailHint: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+            Text("Click for details")
+        }
+        .font(.title3.weight(.medium))
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var detailsRow: some View {
+        HStack(spacing: 8) {
+            if let score = game.discovered.steamMetacriticScore {
+                Text("\(score)")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(metacriticColor(score), in: RoundedRectangle(cornerRadius: 4))
+            }
+            if let genre = game.discovered.steamGenres.first {
+                Text(genre)
+            }
+        }
+        .font(.caption2)
+        .foregroundStyle(.tertiary)
+    }
+
+    private func metacriticColor(_ score: Int) -> Color {
+        switch score {
+        case 75...: return .green
+        case 50..<75: return .yellow
+        default: return .red
+        }
+    }
+
     @ViewBuilder
     private var artwork: some View {
         Group {
@@ -138,6 +197,8 @@ struct CustomGameCardView: View {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
+                    .scaleEffect(isHoveringArtwork ? 1.06 : 1.0)
+                    .animation(.easeOut(duration: 0.3), value: isHoveringArtwork)
             } else {
                 Image(systemName: "gamecontroller.fill")
                     .font(.system(size: artworkHeight * 0.3))
@@ -148,6 +209,7 @@ struct CustomGameCardView: View {
         }
         .frame(height: artworkHeight)
         .clipped()
+        .onHover { isHoveringArtwork = $0 }
     }
 
     private func runningBadge(_ info: RunningProcessInfo) -> some View {
@@ -181,5 +243,19 @@ struct CustomGameCardView: View {
         var updated = game
         updated.exePath = url.path
         model.updateCustomGame(updated)
+    }
+
+    /// Re-runs metadata discovery from scratch (local PE info, then a confident-only Steam match)
+    /// and replaces `discovered` entirely - useful for a game added before a later enrichment
+    /// shipped (richer fields didn't exist yet at import time, so there's nothing here to
+    /// auto-backfill), or one whose confident match was missed the first time. Never touches
+    /// `overrides` - a manual rename/description edit survives a metadata refresh.
+    private func refreshMetadata() {
+        Task {
+            let discovered = await CustomGameMetadataDiscovery.discover(exePath: game.exePath, folderName: nil)
+            var updated = game
+            updated.discovered = discovered
+            model.updateCustomGame(updated)
+        }
     }
 }
