@@ -47,26 +47,31 @@ struct CustomGameDetailView: View {
             VStack(alignment: .leading, spacing: 0) {
                 closeButton
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        header
-                        if let description = game.effectiveAboutTheGame {
-                            Text(description)
-                                .font(.body)
-                                .foregroundStyle(.white.opacity(0.85))
+                    HStack(alignment: .top, spacing: 28) {
+                        VStack(alignment: .leading, spacing: 18) {
+                            header
+                            if let description = game.effectiveAboutTheGame {
+                                Text(description)
+                                    .font(.body)
+                                    .foregroundStyle(.white.opacity(0.85))
+                            }
+                            metaRow
+                            if isMissing {
+                                Label("Game location unavailable", systemImage: "exclamationmark.triangle.fill")
+                                    .font(.callout)
+                                    .foregroundStyle(.orange)
+                            }
+                            actionRow
                         }
-                        if !game.discovered.steamScreenshotPaths.isEmpty {
-                            screenshotStrip(game.discovered.steamScreenshotPaths)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if hasPhotos {
+                            photoColumn
+                                .frame(width: 260)
                         }
-                        metaRow
-                        if isMissing {
-                            Label("Game location unavailable", systemImage: "exclamationmark.triangle.fill")
-                                .font(.callout)
-                                .foregroundStyle(.orange)
-                        }
-                        actionRow
                     }
                     .padding(32)
-                    .frame(maxWidth: 720, alignment: .leading)
+                    .frame(maxWidth: 820, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .clipped()
@@ -139,7 +144,6 @@ struct CustomGameDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            headerArt
             HStack(spacing: 8) {
                 Text(game.effectiveName)
                     .font(.system(size: 34, weight: .bold))
@@ -169,15 +173,36 @@ struct CustomGameDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private var headerArt: some View {
-        if let path = game.effectiveArtworkPath, let image = LocalImageCache.image(atPath: path) {
-            Image(nsImage: image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(height: 200)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.15)))
+    /// True whenever there's actually something to put in `photoColumn`.
+    private var hasPhotos: Bool {
+        game.effectiveArtworkPath != nil || !game.discovered.steamScreenshotPaths.isEmpty
+    }
+
+    /// Every "game photo" (header art, then screenshots) stacked in one column on the right side of
+    /// the view - same layout as `GameDetailView`'s own photo column, for the same reason ("for game
+    /// photos... move to the right," and "custom game needs everything a steam game has too," per
+    /// live feedback). `.aspectRatio(contentMode: .fit)` can never crop or stretch an image
+    /// regardless of its real aspect ratio - the fix for a real, separate "it looks squashed"
+    /// complaint that a fixed width+height frame with `.fill` risked.
+    private var photoColumn: some View {
+        VStack(spacing: 12) {
+            if let path = game.effectiveArtworkPath, let image = LocalImageCache.image(atPath: path) {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.15)))
+            }
+            ForEach(game.discovered.steamScreenshotPaths, id: \.self) { path in
+                if let image = LocalImageCache.image(atPath: path) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
         }
     }
 
@@ -215,21 +240,6 @@ struct CustomGameDetailView: View {
         return parts.joined(separator: "  ·  ")
     }
 
-    private func screenshotStrip(_ paths: [String]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(paths, id: \.self) { path in
-                    if let image = LocalImageCache.image(atPath: path) {
-                        Image(nsImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 240, height: 135)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                }
-            }
-        }
-    }
 
     private var metaRow: some View {
         HStack(spacing: 28) {
