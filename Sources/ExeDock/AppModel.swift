@@ -76,6 +76,21 @@ final class AppModel: ObservableObject {
         refreshSteamGames()
         refreshSteamProfile()
         customGames = CustomGameStore.loadAll()
+        observeAppActivation()
+    }
+
+    /// Re-scans everything worth re-scanning whenever Playdock comes back to the foreground - "make
+    /// sure things always rechecks," per live feedback. A one-shot scan at launch alone means
+    /// installing a Steam game (real or Mac-native), removing a wrapper app, or anything else that
+    /// changes on disk while Playdock sits in the background never shows up without a full relaunch.
+    /// Registered once; safe to call repeatedly since every refresh method it calls already is.
+    private func observeAppActivation() {
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshBottlesAndApps()
+                self?.refreshSteamGames()
+            }
+        }
     }
 
     func refreshBottlesAndApps() {
@@ -144,7 +159,7 @@ final class AppModel: ObservableObject {
         // background helper processes to finish) - never do that on the main thread.
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                try ExeRunner.run(exePath: exePath, in: bottle, arguments: arguments, config: config)
+                try await ExeRunner.run(exePath: exePath, in: bottle, arguments: arguments, config: config)
                 await MainActor.run { [weak self] in self?.statusMessage = "Launched \(name)" }
             } catch {
                 await MainActor.run { [weak self] in self?.errorMessage = error.localizedDescription }
@@ -225,7 +240,7 @@ final class AppModel: ObservableObject {
         statusMessage = "Launching \(displayName)…"
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                try ExeRunner.run(
+                try await ExeRunner.run(
                     exePath: SteamInstaller.installedSteamExePath, in: SteamInstaller.steamBottle,
                     arguments: arguments, config: config
                 )
@@ -354,7 +369,7 @@ final class AppModel: ObservableObject {
         statusMessage = "Launching \(game.effectiveName)…"
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                try ExeRunner.run(
+                try await ExeRunner.run(
                     exePath: game.exePath, in: bottle, arguments: game.launchArguments, config: config
                 )
                 await MainActor.run { [weak self] in self?.statusMessage = "Launched \(game.effectiveName)" }

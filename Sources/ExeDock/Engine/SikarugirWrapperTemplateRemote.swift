@@ -15,9 +15,8 @@ enum SikarugirWrapperTemplateRemoteError: Error, LocalizedError {
 /// Downloads the same public, blank wrapper-app "Template" Sikarugir Creator itself builds every
 /// wrapper app from - the real, public `Sikarugir-App/Wrapper` GitHub release, the exact same
 /// trusted org/pattern `SikarugirEnginesRemote` already uses for engines - purely to get at its
-/// `Contents/Frameworks` folder (the ~50 shared macOS runtime libraries, plus the D3DMetal/DXVK/DXMT
-/// renderer support folders `SikarugirEngine.rendererEnvironment` needs, confirmed present in a real
-/// downloaded copy of this exact template).
+/// `Contents/Frameworks` folder (the ~50 shared macOS runtime libraries wine itself needs at
+/// runtime, confirmed present in a real downloaded copy of this exact template).
 ///
 /// This is what lets a genuinely fresh install - the DMG alone, nothing else ever installed - finish
 /// Playdock's own automatic setup with no separate app and no manual "build a wrapper first" step:
