@@ -71,7 +71,7 @@ struct CustomGameDetailView: View {
                         }
                     }
                     .padding(32)
-                    .frame(maxWidth: 1040, alignment: .leading)
+                    .frame(maxWidth: 1200, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .clipped()
@@ -220,16 +220,16 @@ struct CustomGameDetailView: View {
     /// treatment exactly (see that view's doc comment for the full reasoning: fixed width *and*
     /// height in one `.frame()` call before `.fill` crops it, so every photo renders at the same
     /// size regardless of its own screenshot's native aspect ratio) - "pictures should be at the
-    /// RIGHT," per live feedback.
+    /// RIGHT," per live feedback, sized up per "make the media pictures bigger for better viewing."
     private var photoGrid: some View {
         let rows = allPhotoPaths.chunked(into: 2)
         return VStack(alignment: .leading, spacing: 12) {
             Text("Media")
                 .font(.headline)
                 .foregroundStyle(.white)
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 16) {
                 ForEach(rows.indices, id: \.self) { rowIndex in
-                    HStack(spacing: 10) {
+                    HStack(spacing: 16) {
                         ForEach(rows[rowIndex], id: \.self) { path in
                             photoThumbnail(path)
                         }
@@ -237,7 +237,7 @@ struct CustomGameDetailView: View {
                 }
             }
         }
-        .frame(width: 300, alignment: .leading)
+        .frame(width: 440, alignment: .leading)
     }
 
     private func photoThumbnail(_ path: String) -> some View {
@@ -246,7 +246,7 @@ struct CustomGameDetailView: View {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 145, height: 88)
+                    .frame(width: 212, height: 124)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(RoundedRectangle(cornerRadius: 10))
                     .onTapGesture { expandedImagePath = path }
