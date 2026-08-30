@@ -103,6 +103,14 @@ struct GameModeView: View {
         return model.steamGames.first { $0.appID == runningAppID }
     }
 
+    /// Everything `RunningGameTracker` should watch for "is it running" - Steam games (their own
+    /// install-dir fragment, unchanged) plus custom games (their exe's own containing folder name,
+    /// since they aren't necessarily installed anywhere near a `steamapps` folder at all).
+    private var watchTargets: [(id: String, matchFragment: String)] {
+        model.steamGames.map { (id: $0.appID, matchFragment: "steamapps/common/\($0.installDir)") }
+            + model.customGames.map { (id: $0.id, matchFragment: (($0.exePath as NSString).deletingLastPathComponent as NSString).lastPathComponent) }
+    }
+
     private var dashboard: some View {
         ZStack {
             if let themedGame {
@@ -176,11 +184,14 @@ struct GameModeView: View {
         .sheet(isPresented: $showingSettingsSheet) {
             DefaultSettingsSheet(isAdvancedMode: $isAdvancedMode)
         }
-        .onChange(of: model.steamGames) { games in
-            runningTracker.syncWatchedGames(games)
+        .onChange(of: model.steamGames) { _ in
+            runningTracker.syncWatchedGames(watchTargets)
+        }
+        .onChange(of: model.customGames) { _ in
+            runningTracker.syncWatchedGames(watchTargets)
         }
         .onAppear {
-            runningTracker.syncWatchedGames(model.steamGames)
+            runningTracker.syncWatchedGames(watchTargets)
         }
         .onChange(of: controllerObserver.directionPress?.token) { _ in
             guard isDashboardTheActiveControllerLayer, let direction = controllerObserver.directionPress?.direction else { return }
