@@ -57,6 +57,21 @@ struct GameModeView: View {
         }
     }
 
+    /// The unified grid content - Steam games plus manually-imported custom games, searched and
+    /// sorted together. Steam-only concerns (the launch overlay, dashboard backdrop theming) stay
+    /// keyed off `model.steamGames`/`filteredGames` directly; this is specifically what the grid
+    /// itself, and controller focus over it, iterate.
+    private var libraryEntries: [LibraryEntry] {
+        let all = model.steamGames.map(LibraryEntry.steam) + model.customGames.map(LibraryEntry.custom)
+        let filtered = search.isEmpty ? all : all.filter { $0.name.localizedCaseInsensitiveContains(search) }
+        switch sortOption {
+        case .name:
+            return filtered.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        case .recentlyUpdated:
+            return filtered.sorted { $0.sortDate > $1.sortDate }
+        }
+    }
+
     var body: some View {
         if !model.isGameModeUnlocked {
             lockedState
@@ -141,8 +156,8 @@ struct GameModeView: View {
                     }
                     .onPreferenceChange(GridWidthKey.self) { gridWidth = $0 }
                     .onChange(of: focusedTarget) { target in
-                        guard case .card(let index) = target, filteredGames.indices.contains(index) else { return }
-                        withAnimation { scrollProxy.scrollTo(filteredGames[index].id, anchor: .center) }
+                        guard case .card(let index) = target, libraryEntries.indices.contains(index) else { return }
+                        withAnimation { scrollProxy.scrollTo(libraryEntries[index].id, anchor: .center) }
                     }
                 }
             }
@@ -404,9 +419,9 @@ struct GameModeView: View {
     /// Card size scales with how many games are actually in the library - a lone game (or a
     /// handful) gets big, prominent cards instead of sitting tiny in a corner of a mostly-empty
     /// window; a large library steps down to a denser grid so more fits per screen. Re-evaluated
-    /// live off `filteredGames.count`, so it also reacts to search narrowing the visible set.
+    /// live off `libraryEntries.count`, so it also reacts to search narrowing the visible set.
     private var cardSizeTier: (minWidth: CGFloat, maxWidth: CGFloat, artworkHeight: CGFloat) {
-        switch filteredGames.count {
+        switch libraryEntries.count {
         case 0...2: return (480, 640, 260)
         case 3...6: return (360, 440, 190)
         case 7...15: return (280, 340, 150)
@@ -442,7 +457,7 @@ struct GameModeView: View {
     /// the grid's last row.
     private func moveFocus(_ direction: ControllerDirection) {
         guard let current = focusedTarget else {
-            focusedTarget = filteredGames.isEmpty ? .toolbar(0) : .card(0)
+            focusedTarget = libraryEntries.isEmpty ? .toolbar(0) : .card(0)
             return
         }
         switch current {
@@ -450,7 +465,7 @@ struct GameModeView: View {
             switch direction {
             case .left: focusedTarget = .toolbar(max(0, toolbarIndex - 1))
             case .right: focusedTarget = .toolbar(min(2, toolbarIndex + 1))
-            case .down: focusedTarget = filteredGames.isEmpty ? current : .card(0)
+            case .down: focusedTarget = libraryEntries.isEmpty ? current : .card(0)
             case .up: break
             }
         case .card(let index):
@@ -460,17 +475,17 @@ struct GameModeView: View {
                 guard index % columns != 0 else { return }
                 focusedTarget = .card(index - 1)
             case .right:
-                guard index % columns != columns - 1, index + 1 < filteredGames.count else { return }
+                guard index % columns != columns - 1, index + 1 < libraryEntries.count else { return }
                 focusedTarget = .card(index + 1)
             case .up:
                 focusedTarget = index < columns ? .toolbar(0) : .card(index - columns)
             case .down:
                 let next = index + columns
-                focusedTarget = next < filteredGames.count ? .card(next) : .steamIcon
+                focusedTarget = next < libraryEntries.count ? .card(next) : .steamIcon
             }
         case .steamIcon:
             if direction == .up {
-                focusedTarget = filteredGames.isEmpty ? .toolbar(0) : .card(filteredGames.count - 1)
+                focusedTarget = libraryEntries.isEmpty ? .toolbar(0) : .card(libraryEntries.count - 1)
             }
         }
     }
@@ -486,8 +501,11 @@ struct GameModeView: View {
         case .toolbar:
             showingSettingsSheet = true
         case .card(let index):
-            guard filteredGames.indices.contains(index) else { return }
-            detailGame = filteredGames[index]
+            guard libraryEntries.indices.contains(index) else { return }
+            switch libraryEntries[index] {
+            case .steam(let game): detailGame = game
+            case .custom(let game): model.launchCustomGame(game)
+            }
         case .steamIcon:
             guard model.launchingTarget == nil else { return }
             model.openSteamClient()
@@ -498,15 +516,15 @@ struct GameModeView: View {
 
     @ViewBuilder
     private var gamesGrid: some View {
-        if model.isLoadingSteamGames && model.steamGames.isEmpty {
+        if model.isLoadingSteamGames && model.steamGames.isEmpty && model.customGames.isEmpty {
             // Shimmering placeholders in the exact grid the real cards will land in - reads as a
             // proper dashboard loading in, not just "something, somewhere, is thinking."
             LazyVGrid(columns: gridColumns, spacing: 20) {
                 ForEach(0..<6, id: \.self) { _ in GameCardSkeleton() }
             }
-        } else if model.steamGames.isEmpty {
+        } else if model.steamGames.isEmpty && model.customGames.isEmpty {
             emptyGamesState
-        } else if filteredGames.isEmpty {
+        } else if libraryEntries.isEmpty {
             Text("No games match \u{201C}\(search)\u{201D}.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -514,18 +532,28 @@ struct GameModeView: View {
                 .padding(.top, 40)
         } else {
             LazyVGrid(columns: gridColumns, spacing: 20) {
-                ForEach(Array(filteredGames.enumerated()), id: \.element.id) { index, game in
-                    GameCardView(
-                        game: game, isAdvancedMode: isAdvancedMode, artworkHeight: cardSizeTier.artworkHeight,
-                        isFocused: controllerObserver.isConnected && focusedTarget == .card(index)
-                    ) {
-                        launchOverlayGame = game
-                    } onOpenDetail: {
-                        detailGame = game
+                ForEach(Array(libraryEntries.enumerated()), id: \.element.id) { index, entry in
+                    let isFocused = controllerObserver.isConnected && focusedTarget == .card(index)
+                    switch entry {
+                    case .steam(let game):
+                        GameCardView(
+                            game: game, isAdvancedMode: isAdvancedMode, artworkHeight: cardSizeTier.artworkHeight,
+                            isFocused: isFocused
+                        ) {
+                            launchOverlayGame = game
+                        } onOpenDetail: {
+                            detailGame = game
+                        }
+                    case .custom(let customGame):
+                        CustomGameCardView(
+                            game: customGame, isAdvancedMode: isAdvancedMode, artworkHeight: cardSizeTier.artworkHeight,
+                            isFocused: isFocused
+                        )
                     }
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: model.steamGames)
+            .animation(.easeInOut(duration: 0.2), value: model.customGames)
             .animation(.easeInOut(duration: 0.2), value: cardSizeTier.maxWidth)
         }
     }
@@ -537,7 +565,7 @@ struct GameModeView: View {
                 .foregroundStyle(.tertiary)
             Text("No games installed yet")
                 .font(.title3).bold()
-            Text("Install something from the Steam store and it'll show up here.")
+            Text("Install something from the Steam store, or use \u{201C}+\u{201D} above to add a game you already have.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -1243,7 +1271,7 @@ private struct LaunchOverlayView: View {
 /// The engine/graphics/sync fields shared by both the global "Default Settings" sheet and each
 /// game's own settings popover - the exact same controls that used to sit permanently in Game
 /// Mode's form, now tucked away for anyone who doesn't need them.
-private struct GameSettingsFields: View {
+struct GameSettingsFields: View {
     @Binding var config: GameModeConfig
 
     var body: some View {
@@ -1541,7 +1569,7 @@ private struct GameSettingsPopover: View {
 /// this Mac's own launch history through `CompatibilityFinder`, and shows the aggregated result.
 /// Never applies anything by itself - Apply is always a distinct, explicit tap that goes through the
 /// existing `model.setOverride`, the same mechanism the manual settings below already use.
-private struct FindBestConfigurationSection: View {
+struct FindBestConfigurationSection: View {
     @EnvironmentObject private var model: AppModel
     let itemID: String
     let itemName: String
@@ -1671,7 +1699,7 @@ private struct FindBestConfigurationSection: View {
 
 /// "🔬 Inspect" - a read-only assembly of data Playdock already has, plus `RunningGameTracker` for
 /// the live PID. No new data sources here, just a presentation layer.
-private struct InspectSection: View {
+struct InspectSection: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     let itemID: String
