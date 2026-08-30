@@ -1,20 +1,55 @@
 import Foundation
 
-/// Scans ExeDock's Steam bottle for installed games the same way Steam itself tracks them - via
-/// the `appmanifest_*.acf` files Steam writes into `steamapps/` for every installed app. ExeDock
-/// never launches the executables it finds here directly (see `SteamGame.iconExePath`) - games are
-/// always started through Steam via `-applaunch`, which is the only reliable way to pick up a
-/// game's real launch arguments and prerequisites.
+/// Scans a Steam library for installed games the same way Steam itself tracks them - via the
+/// `appmanifest_*.acf` files Steam writes into `steamapps/` for every installed app. Used for both
+/// ExeDock's own Windows Steam bottle and, separately, the real macOS Steam client's own library
+/// (see `installedNativeMacGames()`) - the manifest format is identical either way.
 enum SteamLibrary {
     /// Steam's own shared runtime payloads that show up as "apps" in steamapps/ but aren't games.
     private static let ignoredNames: Set<String> = ["steamworks common redistributables"]
 
-    private static var steamAppsPath: String {
+    private static var wineBottleSteamAppsPath: String {
         (SteamInstaller.steamBottle.driveCPath as NSString)
             .appendingPathComponent("Program Files (x86)/Steam/steamapps")
     }
 
     static func installedGames() -> [SteamGame] {
+        installedGames(inSteamAppsPath: wineBottleSteamAppsPath, source: .wineBottle, idPrefix: nil)
+    }
+
+    private static let nativeMacSteamRoot = ("~/Library/Application Support/Steam" as NSString).expandingTildeInPath
+
+    /// Every game installed through the real, separately-installed macOS Steam client - a
+    /// completely different Steam install from ExeDock's own Windows one, confirmed live to exist
+    /// side by side on the same Mac (`~/Library/Application Support/Steam`). Every library folder
+    /// Steam itself knows about is scanned, not just the default one, by reading the exact same
+    /// `libraryfolders.vdf` format Steam's own client writes - so a second library folder (an
+    /// external drive, say) is picked up automatically too.
+    static func installedNativeMacGames() -> [SteamGame] {
+        nativeMacSteamAppsPaths()
+            .flatMap { installedGames(inSteamAppsPath: $0, source: .nativeMac, idPrefix: "MAC-") }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private static func nativeMacSteamAppsPaths() -> [String] {
+        let defaultPath = (nativeMacSteamRoot as NSString).appendingPathComponent("steamapps")
+        let vdfPath = (defaultPath as NSString).appendingPathComponent("libraryfolders.vdf")
+        guard let text = try? String(contentsOfFile: vdfPath, encoding: .utf8),
+              let regex = try? NSRegularExpression(pattern: "\"path\"\\s+\"([^\"]*)\"") else {
+            return FileManager.default.fileExists(atPath: defaultPath) ? [defaultPath] : []
+        }
+        let range = NSRange(text.startIndex..., in: text)
+        let paths = regex.matches(in: text, range: range).compactMap { match -> String? in
+            guard let valueRange = Range(match.range(at: 1), in: text) else { return nil }
+            // Steam escapes its own path separators in this file (e.g. "\\" for a literal "/") -
+            // undo that before treating it as a real filesystem path.
+            let raw = String(text[valueRange]).replacingOccurrences(of: "\\\\", with: "/")
+            return (raw as NSString).appendingPathComponent("steamapps")
+        }
+        return paths.isEmpty ? [defaultPath] : paths
+    }
+
+    private static func installedGames(inSteamAppsPath steamAppsPath: String, source: SteamGameSource, idPrefix: String?) -> [SteamGame] {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(atPath: steamAppsPath) else { return [] }
         let commonPath = (steamAppsPath as NSString).appendingPathComponent("common")
@@ -46,11 +81,13 @@ enum SteamLibrary {
                     .flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil }
 
                 return SteamGame(
-                    appID: appID, name: name, installDir: installDir,
-                    iconExePath: iconExecutable(inFolder: gameFolder),
+                    appID: (idPrefix ?? "") + appID, name: name, installDir: installDir,
+                    installFolderPath: gameFolder,
+                    iconExePath: source == .wineBottle ? iconExecutable(inFolder: gameFolder) : nil,
                     sizeOnDisk: (sizeOnDisk ?? 0) > 0 ? sizeOnDisk : nil,
                     buildID: (buildID != "0") ? buildID : nil,
-                    lastUpdated: lastUpdated
+                    lastUpdated: lastUpdated,
+                    source: source
                 )
             }
         return games.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }

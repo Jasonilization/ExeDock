@@ -11,6 +11,11 @@ enum SetupStage: Equatable {
     /// `Sikarugir-App/Engines` GitHub release - no separate Sikarugir Creator install needed.
     case downloadingEngine(String)
     case extractingEngine
+    /// A truly fresh install (nothing ever installed but Playdock's own DMG) has an engine but no
+    /// local Sikarugir wrapper app to copy shared runtime libraries from - see
+    /// `SikarugirEngine.ensureFrameworksAvailable`'s doc comment. Playdock fetches the same public
+    /// wrapper template Sikarugir Creator itself builds from instead, so this stays fully automatic.
+    case downloadingRuntimeLibraries(String)
     case initializingBottle
     case waitingForSikarugirCreator
     case missingSikarugirCreator
@@ -143,6 +148,13 @@ final class SetupCoordinator: ObservableObject {
     }
 
     private func ensureDefaultBottleReady(engineName: String? = nil) async {
+        do {
+            try await ensureRuntimeFrameworksReady()
+        } catch {
+            stage = .failed(error.localizedDescription)
+            return
+        }
+
         stage = .initializingBottle
         let bottle = BottleManager.shared.defaultBottle
         do {
@@ -154,5 +166,24 @@ final class SetupCoordinator: ObservableObject {
         } catch {
             stage = .failed(error.localizedDescription)
         }
+    }
+
+    /// Makes sure the shared runtime libraries every launch needs are ready, transparently
+    /// downloading Sikarugir's own public wrapper template for them (see
+    /// `SikarugirWrapperTemplateRemote`'s doc comment) if no wrapper app happens to be installed
+    /// locally to copy from already - so a completely fresh install doesn't dead-end asking the
+    /// user to go build a wrapper app in a separate tool first. A no-op, near-instant check for
+    /// anyone who already has this (the overwhelmingly common case).
+    private func ensureRuntimeFrameworksReady() async throws {
+        let alreadyReady = await Task.detached(priority: .userInitiated) {
+            (try? SikarugirEngine.ensureFrameworksAvailable()) != nil
+        }.value
+        if alreadyReady { return }
+
+        stage = .downloadingRuntimeLibraries("Looking for Playdock's runtime libraries…")
+        try await SikarugirWrapperTemplateRemote.downloadFrameworks(into: SikarugirEngine.exeDockFrameworksDir) { [weak self] message in
+            Task { @MainActor in self?.stage = .downloadingRuntimeLibraries(message) }
+        }
+        SikarugirEngine.markFrameworksReady()
     }
 }
