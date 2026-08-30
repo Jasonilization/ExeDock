@@ -84,14 +84,18 @@ final class AppModel: ObservableObject {
         detectedApps = knownBottles.flatMap(CDriveScanner.scan)
     }
 
+    /// Merges ExeDock's own Windows Steam bottle (gated on `isGameModeUnlocked`, since that
+    /// reflects whether ExeDock has actually set that bottle up yet) with whatever's installed
+    /// through the real, separate macOS Steam client - which isn't gated on that at all, since it's
+    /// a completely different Steam install ExeDock doesn't manage or need to unlock anything for.
+    /// "Make sure I can see my mac steam games... too," per live feedback.
     func refreshSteamGames() {
-        guard isGameModeUnlocked else {
-            steamGames = []
-            return
-        }
+        let scanWineBottle = isGameModeUnlocked
         isLoadingSteamGames = true
         Task.detached(priority: .utility) { [weak self] in
-            let games = SteamLibrary.installedGames()
+            let wineGames = scanWineBottle ? SteamLibrary.installedGames() : []
+            let nativeGames = SteamLibrary.installedNativeMacGames()
+            let games = wineGames + nativeGames
             await MainActor.run { [weak self] in
                 self?.steamGames = games
                 self?.isLoadingSteamGames = false
@@ -133,16 +137,14 @@ final class AppModel: ObservableObject {
     }
 
     func run(exePath: String, bottle: Bottle, arguments: [String] = [], displayName: String? = nil) {
-        let isSteamBottle = isGameModeUnlocked && bottle.id == SteamInstaller.steamBottle.id
-        let env = isSteamBottle ? gameModeConfig.environment : [:]
-        let engineName = isSteamBottle ? gameModeConfig.engineName : nil
+        let config = gameModeConfig
         let name = displayName ?? (exePath as NSString).lastPathComponent
         statusMessage = "Launching \(name)…"
         // A bottle that isn't initialized yet can take a while (wineboot + a grace period for its
         // background helper processes to finish) - never do that on the main thread.
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                try ExeRunner.run(exePath: exePath, in: bottle, arguments: arguments, extraEnvironment: env, engineName: engineName)
+                try ExeRunner.run(exePath: exePath, in: bottle, arguments: arguments, config: config)
                 await MainActor.run { [weak self] in self?.statusMessage = "Launched \(name)" }
             } catch {
                 await MainActor.run { [weak self] in self?.errorMessage = error.localizedDescription }
@@ -154,17 +156,35 @@ final class AppModel: ObservableObject {
     /// their executable directly - see `SteamGame.iconExePath` for why. Uses that game's own
     /// settings override if it has one.
     func launchSteamGame(_ game: SteamGame) {
+        if game.source == .nativeMac {
+            launchNativeMacSteamGame(game)
+            return
+        }
         launchSteamGame(game, using: config(for: game))
     }
 
     /// Same launch, but with a specific config rather than the game's saved override - used by the
-    /// Experiment wizard to try a variant without touching the player's actual saved settings.
+    /// Experiment wizard to try a variant without touching the player's actual saved settings. Only
+    /// meaningful for a `wineBottle` game - the Experiment wizard has no reason to ever be pointed
+    /// at a `nativeMac` one, which has no ExeDock-managed config to experiment with in the first
+    /// place.
     func launchSteamGame(_ game: SteamGame, using config: GameModeConfig) {
         guard ensureSteamStillInstalled() else { return }
         launchSteam(
             target: .game(game.appID), arguments: ["-applaunch", game.appID], displayName: game.name,
             config: config, recordOutcomeFor: game.appID
         )
+    }
+
+    /// Native macOS Steam games are launched by asking the *real*, already-installed macOS Steam
+    /// client to run them directly - `steam://rungameid/<appid>` is Steam's own standard, documented
+    /// URL scheme for this, handled entirely by that real Steam app (no Wine, no ExeRunner involved
+    /// at all) - "make sure I can see my mac steam games and launch it here too, same way," per live
+    /// feedback.
+    private func launchNativeMacSteamGame(_ game: SteamGame) {
+        guard let url = URL(string: "steam://rungameid/\(game.metadataAppID)") else { return }
+        statusMessage = "Launching \(game.name)…"
+        NSWorkspace.shared.open(url)
     }
 
     /// Opens the Steam client itself (no specific game) - e.g. to browse the store or install
@@ -207,7 +227,7 @@ final class AppModel: ObservableObject {
             do {
                 try ExeRunner.run(
                     exePath: SteamInstaller.installedSteamExePath, in: SteamInstaller.steamBottle,
-                    arguments: arguments, extraEnvironment: config.environment, engineName: config.engineName
+                    arguments: arguments, config: config
                 )
                 await MainActor.run { [weak self] in self?.statusMessage = "Launched \(displayName)" }
                 if let appID { LocalOutcomeTracker.record(appID: appID, config: config, launchErrored: false) }
@@ -282,7 +302,7 @@ final class AppModel: ObservableObject {
         sampleGameAppIDs.enumerated().map { index, entry in
             SteamGame(
                 appID: "SAMPLE-\(entry.appID)", name: entry.name, installDir: entry.name,
-                iconExePath: nil, sizeOnDisk: Int64(300_000_000 * (index + 1)),
+                installFolderPath: "", iconExePath: nil, sizeOnDisk: Int64(300_000_000 * (index + 1)),
                 buildID: "sample", lastUpdated: Date()
             )
         }
@@ -335,8 +355,7 @@ final class AppModel: ObservableObject {
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
                 try ExeRunner.run(
-                    exePath: game.exePath, in: bottle, arguments: game.launchArguments,
-                    extraEnvironment: config.environment, engineName: config.engineName
+                    exePath: game.exePath, in: bottle, arguments: game.launchArguments, config: config
                 )
                 await MainActor.run { [weak self] in self?.statusMessage = "Launched \(game.effectiveName)" }
             } catch {

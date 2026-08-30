@@ -618,7 +618,7 @@ private struct GameCardView: View {
                         .lineLimit(1)
                         .help(developerHelpText)
                     Spacer()
-                    if isAdvancedMode {
+                    if isAdvancedMode && game.source == .wineBottle {
                         Button {
                             showingSettings = true
                         } label: {
@@ -689,7 +689,10 @@ private struct GameCardView: View {
             }
             Button {
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(game.appID, forType: .string)
+                // The real Steam appid, not ExeDock's own internally-namespaced `appID` (which can
+                // carry a "MAC-"/"SAMPLE-" prefix so it never collides with a same-appid entry from
+                // a different source) - copying that prefix out to a user would be actively wrong.
+                NSPasteboard.general.setString(game.metadataAppID, forType: .string)
             } label: {
                 Label("Copy App ID", systemImage: "doc.on.doc")
             }
@@ -702,11 +705,7 @@ private struct GameCardView: View {
         }
     }
 
-    private var installFolderPath: String {
-        (SteamInstaller.steamBottle.driveCPath as NSString)
-            .appendingPathComponent("Program Files (x86)/Steam/steamapps/common")
-            .appending("/\(game.installDir)")
-    }
+    private var installFolderPath: String { game.installFolderPath }
 
     private var detailsRow: some View {
         HStack(spacing: 8) {
@@ -722,7 +721,11 @@ private struct GameCardView: View {
             if let build = game.buildID {
                 Text("Build \(build)")
             }
-            Text(engineBadgeText)
+            if game.source == .wineBottle {
+                Text(engineBadgeText)
+            } else {
+                Text("Mac")
+            }
         }
         .font(.caption2)
         .foregroundStyle(.tertiary)
@@ -863,7 +866,8 @@ struct GameDetailView: View {
     private var availableActions: [DetailAction] {
         var actions: [DetailAction] = []
         if runningInfo == nil { actions.append(.launch) }
-        if isAdvancedMode { actions.append(.settings) }
+        // A native macOS Steam game has no ExeDock-managed wine bottle/engine to configure.
+        if isAdvancedMode && game.source == .wineBottle { actions.append(.settings) }
         actions.append(.reveal)
         actions.append(.storePage)
         return actions
@@ -1186,7 +1190,7 @@ struct GameDetailView: View {
                 .frame(maxWidth: 260)
                 .focusRing(isFocused(.launch))
             }
-            if isAdvancedMode {
+            if isAdvancedMode && game.source == .wineBottle {
                 Button {
                     showingSettings = true
                 } label: {
@@ -1240,11 +1244,7 @@ struct GameDetailView: View {
         return hours > 0 ? "\(hours)h \(remainder)m" : "\(remainder)m"
     }
 
-    private var installFolderPath: String {
-        (SteamInstaller.steamBottle.driveCPath as NSString)
-            .appendingPathComponent("Program Files (x86)/Steam/steamapps/common")
-            .appending("/\(game.installDir)")
-    }
+    private var installFolderPath: String { game.installFolderPath }
 }
 
 // MARK: - Dashboard theming
@@ -1630,11 +1630,7 @@ private struct GameSettingsPopover: View {
         )
     }
 
-    private var installFolderPath: String {
-        (SteamInstaller.steamBottle.driveCPath as NSString)
-            .appendingPathComponent("Program Files (x86)/Steam/steamapps/common")
-            .appending("/\(game.installDir)")
-    }
+    private var installFolderPath: String { game.installFolderPath }
 }
 
 // MARK: - Find Best Configuration

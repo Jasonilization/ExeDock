@@ -75,7 +75,7 @@ struct SetupView: View {
     private var currentStep: Step? {
         switch setup.stage {
         case .checking, .downloadingEngine, .extractingEngine, .waitingForSikarugirCreator: return .engine
-        case .initializingBottle: return .bottle
+        case .downloadingRuntimeLibraries, .initializingBottle: return .bottle
         case .ready, .missingSikarugirCreator, .failed, .choosingEngine: return nil
         }
     }
@@ -116,6 +116,7 @@ struct SetupView: View {
         case .checking: return "Getting ready…"
         case .downloadingEngine: return "Installing Sikarugir…"
         case .extractingEngine: return "Installing the Sikarugir engine…"
+        case .downloadingRuntimeLibraries: return "Installing Playdock's runtime libraries…"
         case .initializingBottle: return "Finishing up…"
         case .waitingForSikarugirCreator: return "Waiting for Sikarugir Creator…"
         case .missingSikarugirCreator: return "Sikarugir Creator isn't installed"
@@ -132,6 +133,8 @@ struct SetupView: View {
             return message
         case .extractingEngine:
             return "Copying it into Playdock - this only happens once."
+        case .downloadingRuntimeLibraries(let message):
+            return message
         case .initializingBottle:
             return "Just a moment more."
         case .waitingForSikarugirCreator:
@@ -166,6 +169,7 @@ struct SetupView: View {
         case .checking: return 0.1
         case .downloadingEngine: return nil // real download progress isn't tracked byte-by-byte
         case .extractingEngine: return 0.7
+        case .downloadingRuntimeLibraries: return 0.8
         case .initializingBottle: return 0.9
         default: return nil
         }
@@ -173,7 +177,7 @@ struct SetupView: View {
 
     private var showsSpinner: Bool {
         switch setup.stage {
-        case .checking, .downloadingEngine, .extractingEngine, .initializingBottle, .waitingForSikarugirCreator: return true
+        case .checking, .downloadingEngine, .extractingEngine, .downloadingRuntimeLibraries, .initializingBottle, .waitingForSikarugirCreator: return true
         default: return false
         }
     }
