@@ -896,33 +896,38 @@ struct GameDetailView: View {
             VStack(alignment: .leading, spacing: 0) {
                 closeButton
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        header
-                        // The full "About This Game" copy when it's there (real store text, not
-                        // just the one-line card blurb) - falls back to the short description for
-                        // anything fetched before this field existed, or for entries with no fuller
-                        // write-up at all.
-                        if let description = storeInfo?.aboutTheGame ?? storeInfo?.shortDescription {
-                            Text(description)
-                                .font(.body)
-                                .foregroundStyle(.white.opacity(0.85))
+                    HStack(alignment: .top, spacing: 28) {
+                        VStack(alignment: .leading, spacing: 18) {
+                            header
+                            // The full "About This Game" copy when it's there (real store text,
+                            // not just the one-line card blurb) - falls back to the short
+                            // description for anything fetched before this field existed, or for
+                            // entries with no fuller write-up at all.
+                            if let description = storeInfo?.aboutTheGame ?? storeInfo?.shortDescription {
+                                Text(description)
+                                    .font(.body)
+                                    .foregroundStyle(.white.opacity(0.85))
+                            }
+                            metaRow
+                            actionRow
                         }
-                        if let screenshotPaths = storeInfo?.screenshotPaths, !screenshotPaths.isEmpty {
-                            screenshotStrip(screenshotPaths)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if hasPhotos {
+                            photoColumn
+                                .frame(width: 260)
                         }
-                        metaRow
-                        actionRow
                     }
                     .padding(32)
                     // The double .frame() is deliberate, not redundant: the first caps the content
-                    // column's own width so it stays readable at 720pt; the second then re-expands
+                    // row's own width so it stays readable at 820pt; the second then re-expands
                     // that capped block to fill whatever width the ScrollView actually has and
                     // re-applies leading alignment *within* that full width. A single
-                    // `.frame(maxWidth: 720, alignment: .leading)` only caps the view's own size -
+                    // `.frame(maxWidth: 820, alignment: .leading)` only caps the view's own size -
                     // it doesn't reliably left-anchor it against a wider ancestor, which is exactly
                     // what put this content off-screen entirely: confirmed live, content rendering
                     // well past the left edge of the window with no way to reach the close button.
-                    .frame(maxWidth: 720, alignment: .leading)
+                    .frame(maxWidth: 820, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .clipped()
@@ -980,7 +985,6 @@ struct GameDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            headerArt
             Text(game.name)
                 .font(.system(size: 34, weight: .bold))
                 .foregroundStyle(.white)
@@ -1002,15 +1006,38 @@ struct GameDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private var headerArt: some View {
-        if let path = storeInfo?.headerImagePath, let image = LocalImageCache.image(atPath: path) {
-            Image(nsImage: image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(height: 200)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.15)))
+    /// True whenever there's actually something to put in `photoColumn` - governs whether the
+    /// right-hand photo column renders at all, so a game with no fetched art doesn't leave an empty
+    /// gap on the right.
+    private var hasPhotos: Bool {
+        storeInfo?.headerImagePath != nil || !(storeInfo?.screenshotPaths.isEmpty ?? true)
+    }
+
+    /// Every "game photo" (header art, then screenshots) stacked in one column on the right side of
+    /// the view - "for game photos... move to the right," per live feedback. Each image sizes
+    /// itself to the column's own fixed width via `.aspectRatio(contentMode: .fit)`, which can never
+    /// crop *or* stretch an image regardless of its real aspect ratio - the fix for a real, separate
+    /// complaint ("it looks squashed") that a fixed width+height frame with `.fill` risked for
+    /// screenshots, whose aspect ratio doesn't always match the header art's.
+    private var photoColumn: some View {
+        VStack(spacing: 12) {
+            if let path = storeInfo?.headerImagePath, let image = LocalImageCache.image(atPath: path) {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.15)))
+            }
+            ForEach(storeInfo?.screenshotPaths ?? [], id: \.self) { path in
+                if let image = LocalImageCache.image(atPath: path) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
         }
     }
 
@@ -1052,23 +1079,6 @@ struct GameDetailView: View {
         return parts.joined(separator: "  ·  ")
     }
 
-    /// A horizontal strip of real Steam screenshots - purely visual/informational, not part of the
-    /// controller focus loop (nothing to "press" here, just something to look at).
-    private func screenshotStrip(_ paths: [String]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(paths, id: \.self) { path in
-                    if let image = LocalImageCache.image(atPath: path) {
-                        Image(nsImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 240, height: 135)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                }
-            }
-        }
-    }
 
     private var metaRow: some View {
         HStack(spacing: 28) {
