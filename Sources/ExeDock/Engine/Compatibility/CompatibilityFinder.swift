@@ -14,16 +14,17 @@ actor CompatibilityFinder {
 
     /// Returns the cached recommendation immediately unless `forceRefresh` is set or nothing's
     /// cached yet, in which case it fetches fresh evidence from every source at once, aggregates,
-    /// caches, and returns the result.
-    func recommendation(for game: SteamGame, forceRefresh: Bool = false) async -> CompatibilityRecommendation {
-        if !forceRefresh, let cached = CompatibilityCache.load(appID: game.appID) {
+    /// caches, and returns the result. Generalized from a concrete `SteamGame` to a plain id/name
+    /// pair so a custom (manually-imported) game can use the exact same pipeline.
+    func recommendation(id: String, name: String, forceRefresh: Bool = false) async -> CompatibilityRecommendation {
+        if !forceRefresh, let cached = CompatibilityCache.load(appID: id) {
             return cached
         }
 
         let allSources = sources
         let reports = await withTaskGroup(of: [CompatibilityReport].self) { group in
             for source in allSources {
-                group.addTask { await source.fetchReports(for: game) }
+                group.addTask { await source.fetchReports(id: id, name: name) }
             }
             var combined: [CompatibilityReport] = []
             for await result in group { combined.append(contentsOf: result) }
@@ -31,7 +32,12 @@ actor CompatibilityFinder {
         }
 
         let recommendation = CompatibilityAggregator.aggregate(reports: reports)
-        CompatibilityCache.save(recommendation, appID: game.appID)
+        CompatibilityCache.save(recommendation, appID: id)
         return recommendation
+    }
+
+    /// Convenience for the common Steam case.
+    func recommendation(for game: SteamGame, forceRefresh: Bool = false) async -> CompatibilityRecommendation {
+        await recommendation(id: game.appID, name: game.name, forceRefresh: forceRefresh)
     }
 }

@@ -5,5 +5,8 @@ import Foundation
 /// conformance added to the array `CompatibilityFinder` iterates - nothing else changes.
 protocol CompatibilitySource: Sendable {
     var name: String { get }
-    func fetchReports(for game: SteamGame) async -> [CompatibilityReport]
+    /// `id` only matters to `LocalHistorySource` (it keys this Mac's own launch history); the
+    /// public web sources only ever look at `name`. Generalized from a concrete `SteamGame` so a
+    /// custom (manually-imported) game can be looked up too, using its own id and display name.
+    func fetchReports(id: String, name: String) async -> [CompatibilityReport]
 }

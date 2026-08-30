@@ -1481,7 +1481,7 @@ private struct GameSettingsPopover: View {
                 .padding(14)
             Divider()
             Form {
-                FindBestConfigurationSection(game: game)
+                FindBestConfigurationSection(itemID: game.appID, itemName: game.name)
                 GameSettingsFields(config: configBinding)
                 Button("Use Default Settings") {
                     model.setOverride(nil, for: game)
@@ -1500,7 +1500,7 @@ private struct GameSettingsPopover: View {
                         .foregroundStyle(.secondary)
                 }
 
-                InspectSection(game: game)
+                InspectSection(itemID: game.appID, itemName: game.name, installPath: installFolderPath)
             }
             .formStyle(.grouped)
         }
@@ -1516,6 +1516,12 @@ private struct GameSettingsPopover: View {
             set: { model.setOverride($0, for: game) }
         )
     }
+
+    private var installFolderPath: String {
+        (SteamInstaller.steamBottle.driveCPath as NSString)
+            .appendingPathComponent("Program Files (x86)/Steam/steamapps/common")
+            .appending("/\(game.installDir)")
+    }
 }
 
 // MARK: - Find Best Configuration
@@ -1526,7 +1532,8 @@ private struct GameSettingsPopover: View {
 /// existing `model.setOverride`, the same mechanism the manual settings below already use.
 private struct FindBestConfigurationSection: View {
     @EnvironmentObject private var model: AppModel
-    let game: SteamGame
+    let itemID: String
+    let itemName: String
     @LocalState private var recommendation: CompatibilityRecommendation?
     @LocalState private var isSearching = false
     @LocalState private var showingEvidence = false
@@ -1598,7 +1605,7 @@ private struct FindBestConfigurationSection: View {
 
             if recommendation.recommendedSettings != nil {
                 Button("Apply") {
-                    model.setOverride(recommendation.applied(onto: model.config(for: game)), for: game)
+                    model.setOverride(recommendation.applied(onto: model.config(forID: itemID)), forID: itemID)
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -1640,7 +1647,7 @@ private struct FindBestConfigurationSection: View {
     private func search(forceRefresh: Bool) {
         isSearching = true
         Task {
-            let result = await CompatibilityFinder.shared.recommendation(for: game, forceRefresh: forceRefresh)
+            let result = await CompatibilityFinder.shared.recommendation(id: itemID, name: itemName, forceRefresh: forceRefresh)
             await MainActor.run {
                 recommendation = result
                 isSearching = false
@@ -1656,10 +1663,12 @@ private struct FindBestConfigurationSection: View {
 private struct InspectSection: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var runningTracker = RunningGameTracker.shared
-    let game: SteamGame
+    let itemID: String
+    let itemName: String
+    let installPath: String
 
-    private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.appID] }
-    private var config: GameModeConfig { model.config(for: game) }
+    private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[itemID] }
+    private var config: GameModeConfig { model.config(forID: itemID) }
 
     var body: some View {
         Section("Inspect") {
@@ -1681,24 +1690,18 @@ private struct InspectSection: View {
                 LabeledContent("MoltenVK CX", value: config.moltenVKCX ? "On" : "Off")
             }
             DisclosureGroup("Files") {
-                Text(installFolderPath)
+                Text(installPath)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                 Button {
-                    model.revealInFinder(installFolderPath)
+                    model.revealInFinder(installPath)
                 } label: {
                     Label("Reveal in Finder", systemImage: "folder")
                 }
                 .buttonStyle(.borderless)
             }
         }
-    }
-
-    private var installFolderPath: String {
-        (SteamInstaller.steamBottle.driveCPath as NSString)
-            .appendingPathComponent("Program Files (x86)/Steam/steamapps/common")
-            .appending("/\(game.installDir)")
     }
 }
 

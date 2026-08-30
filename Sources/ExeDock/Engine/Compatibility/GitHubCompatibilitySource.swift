@@ -13,10 +13,10 @@ struct GitHubCompatibilitySource: CompatibilitySource {
     private static let searchURL = "https://api.github.com/search/issues"
     private static let keywordQuery = "D3DMetal OR DXVK OR DXMT OR VKD3D OR ESync OR MSync OR Wine"
 
-    func fetchReports(for game: SteamGame) async -> [CompatibilityReport] {
+    func fetchReports(id: String, name: String) async -> [CompatibilityReport] {
         var components = URLComponents(string: Self.searchURL)!
         components.queryItems = [
-            URLQueryItem(name: "q", value: "\"\(game.name)\" (\(Self.keywordQuery))"),
+            URLQueryItem(name: "q", value: "\"\(name)\" (\(Self.keywordQuery))"),
             URLQueryItem(name: "per_page", value: "5"),
         ]
         guard let url = components.url else { return [] }
@@ -28,13 +28,13 @@ struct GitHubCompatibilitySource: CompatibilitySource {
         do {
             result = try await URLSession.shared.data(for: request)
         } catch {
-            DiagnosticsLog.log("GitHub compatibility search [\(game.name)]: request failed - \(error.localizedDescription)")
+            DiagnosticsLog.log("GitHub compatibility search [\(name)]: request failed - \(error.localizedDescription)")
             return []
         }
         guard (result.response as? HTTPURLResponse)?.statusCode == 200,
               let json = try? JSONSerialization.jsonObject(with: result.data) as? [String: Any],
               let items = json["items"] as? [[String: Any]] else {
-            DiagnosticsLog.log("GitHub compatibility search [\(game.name)]: bad response (possibly rate-limited)")
+            DiagnosticsLog.log("GitHub compatibility search [\(name)]: bad response (possibly rate-limited)")
             return []
         }
 
@@ -46,7 +46,7 @@ struct GitHubCompatibilitySource: CompatibilitySource {
             let excerpt = excerpts.isEmpty ? title : excerpts.joined(separator: " […] ")
             return CompatibilityReport(sourceName: "GitHub", sourceURL: url, excerpt: excerpt, settings: settings)
         }
-        DiagnosticsLog.log("GitHub compatibility search [\(game.name)]: \(reports.count) usable report(s) from \(items.count) result(s)")
+        DiagnosticsLog.log("GitHub compatibility search [\(name)]: \(reports.count) usable report(s) from \(items.count) result(s)")
         return reports
     }
 }
