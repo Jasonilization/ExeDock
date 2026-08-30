@@ -22,8 +22,18 @@ enum CustomGameMetadataDiscovery {
             return metadata
         }
         if let storeInfo = await SteamStoreInfoCache.shared.info(for: appID) {
+            // Everything a real Steam game's own card/detail view shows, not just the description
+            // and header art - "custom game needs everything a steam game has too," per live
+            // feedback - all from the one appdetails call `SteamStoreInfoCache` already made.
             metadata.steamDescription = storeInfo.shortDescription
             metadata.steamArtworkPath = storeInfo.headerImagePath
+            metadata.steamAboutTheGame = storeInfo.aboutTheGame
+            metadata.steamBackgroundPath = storeInfo.backgroundImagePath
+            metadata.steamScreenshotPaths = storeInfo.screenshotPaths
+            metadata.steamGenres = storeInfo.genres
+            metadata.steamReleaseDate = storeInfo.releaseDate
+            metadata.steamDevelopers = storeInfo.developers
+            metadata.steamMetacriticScore = storeInfo.metacriticScore
         }
         return metadata
     }

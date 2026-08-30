@@ -31,6 +31,7 @@ struct GameModeView: View {
     @LocalState private var launchOverlayGame: SteamGame?
     @LocalState private var showingControllerMode = false
     @LocalState private var detailGame: SteamGame?
+    @LocalState private var detailCustomGame: CustomGame?
     /// Everywhere a controller's D-pad can currently be focused on the dashboard - the toolbar
     /// (Refresh/Settings), a card in the grid, or the floating Steam icon. `nil` until the first
     /// D-pad press (mouse-only browsing shows no ring at all).
@@ -165,7 +166,7 @@ struct GameModeView: View {
             steamFloatingIcon
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 .padding(24)
-                .allowsHitTesting(detailGame == nil && launchOverlayGame == nil && !showingControllerMode)
+                .allowsHitTesting(detailGame == nil && detailCustomGame == nil && launchOverlayGame == nil && !showingControllerMode)
 
             if let detailGame {
                 GameDetailView(game: detailGame, isAdvancedMode: isAdvancedMode) {
@@ -173,6 +174,14 @@ struct GameModeView: View {
                 } onLaunch: {
                     self.detailGame = nil
                     launchOverlayGame = detailGame
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                .zIndex(1)
+            }
+
+            if let detailCustomGame {
+                CustomGameDetailView(game: detailCustomGame, isAdvancedMode: isAdvancedMode) {
+                    self.detailCustomGame = nil
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.92)))
                 .zIndex(1)
@@ -195,6 +204,7 @@ struct GameModeView: View {
         .animation(.easeInOut(duration: 0.2), value: model.launchingTarget)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: launchOverlayGame?.appID)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: detailGame?.appID)
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: detailCustomGame?.id)
         .animation(.easeInOut(duration: 0.4), value: themedGame?.appID)
         .animation(.easeInOut(duration: 0.25), value: showingControllerMode)
         .sheet(isPresented: $showingSettingsSheet) {
@@ -448,7 +458,7 @@ struct GameModeView: View {
     /// carousel) - both of those own the same D-pad/A stream the instant they're shown, per
     /// `ControllerObserver`'s "single owner, self-filtering subscribers" design.
     private var isDashboardTheActiveControllerLayer: Bool {
-        detailGame == nil && !showingControllerMode
+        detailGame == nil && detailCustomGame == nil && !showingControllerMode
     }
 
     /// Real 2D movement across every focusable spot on the dashboard: the toolbar row above the
@@ -504,7 +514,7 @@ struct GameModeView: View {
             guard libraryEntries.indices.contains(index) else { return }
             switch libraryEntries[index] {
             case .steam(let game): detailGame = game
-            case .custom(let game): model.launchCustomGame(game)
+            case .custom(let game): detailCustomGame = game
             }
         case .steamIcon:
             guard model.launchingTarget == nil else { return }
@@ -548,7 +558,9 @@ struct GameModeView: View {
                         CustomGameCardView(
                             game: customGame, isAdvancedMode: isAdvancedMode, artworkHeight: cardSizeTier.artworkHeight,
                             isFocused: isFocused
-                        )
+                        ) {
+                            detailCustomGame = customGame
+                        }
                     }
                 }
             }
