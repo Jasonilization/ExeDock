@@ -29,6 +29,7 @@ struct GameModeView: View {
     @LocalState private var showingAddGameSheet = false
     @LocalState private var sortOption: GameSortOption = .name
     @LocalState private var launchOverlayGame: SteamGame?
+    @LocalState private var launchOverlayCustomGame: CustomGame?
     @LocalState private var showingControllerMode = false
     @LocalState private var detailGame: SteamGame?
     @LocalState private var detailCustomGame: CustomGame?
@@ -185,7 +186,10 @@ struct GameModeView: View {
             steamFloatingIcon
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 .padding(24)
-                .allowsHitTesting(detailGame == nil && detailCustomGame == nil && launchOverlayGame == nil && !showingControllerMode)
+                .allowsHitTesting(
+                    detailGame == nil && detailCustomGame == nil && launchOverlayGame == nil
+                        && launchOverlayCustomGame == nil && !showingControllerMode
+                )
 
             if let detailGame {
                 GameDetailView(game: detailGame, isAdvancedMode: isAdvancedMode) {
@@ -201,6 +205,9 @@ struct GameModeView: View {
             if let detailCustomGame {
                 CustomGameDetailView(game: detailCustomGame, isAdvancedMode: isAdvancedMode) {
                     self.detailCustomGame = nil
+                } onLaunch: {
+                    self.detailCustomGame = nil
+                    launchOverlayCustomGame = detailCustomGame
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.92)))
                 .zIndex(1)
@@ -210,6 +217,15 @@ struct GameModeView: View {
                 LaunchOverlayView(game: launchOverlayGame, config: model.config(for: launchOverlayGame))
                     .transition(.opacity.combined(with: .scale(scale: 0.94)))
                     .zIndex(1)
+            }
+
+            if let launchOverlayCustomGame {
+                CustomLaunchOverlayView(
+                    game: launchOverlayCustomGame,
+                    statusLine: "Launching via \(model.resolvedBottle(forExePath: launchOverlayCustomGame.exePath).name)…"
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                .zIndex(1)
             }
 
             if showingControllerMode {
@@ -222,6 +238,7 @@ struct GameModeView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: model.launchingTarget)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: launchOverlayGame?.appID)
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: launchOverlayCustomGame?.id)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: detailGame?.appID)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: detailCustomGame?.id)
         .animation(.easeInOut(duration: 0.4), value: themedGame?.appID)
@@ -257,6 +274,9 @@ struct GameModeView: View {
             if let launchOverlayGame, running[launchOverlayGame.appID] != nil {
                 self.launchOverlayGame = nil
             }
+            if let launchOverlayCustomGame, running[launchOverlayCustomGame.id] != nil {
+                self.launchOverlayCustomGame = nil
+            }
         }
         .onChange(of: launchOverlayGame?.appID) { appID in
             guard let appID else { return }
@@ -264,6 +284,15 @@ struct GameModeView: View {
                 try? await Task.sleep(for: .seconds(20))
                 if launchOverlayGame?.appID == appID {
                     launchOverlayGame = nil
+                }
+            }
+        }
+        .onChange(of: launchOverlayCustomGame?.id) { id in
+            guard let id else { return }
+            Task {
+                try? await Task.sleep(for: .seconds(20))
+                if launchOverlayCustomGame?.id == id {
+                    launchOverlayCustomGame = nil
                 }
             }
         }
@@ -621,6 +650,8 @@ struct GameModeView: View {
                             game: customGame, isAdvancedMode: isAdvancedMode, artworkHeight: artworkHeight,
                             isFocused: isFocused
                         ) {
+                            launchOverlayCustomGame = customGame
+                        } onOpenDetail: {
                             detailCustomGame = customGame
                         }
                         .frame(width: columnWidth)
@@ -1346,51 +1377,21 @@ private struct DashboardBackdropView: View {
 /// was clicked - `GameCardView` lives inside a `LazyVGrid`/`ScrollView`, where a card that hasn't
 /// been scrolled into view yet may not have a measured frame for the effect to animate from, which
 /// risks a broken-looking animation for a real but relatively rare case. A scale+fade transition
-/// (applied by the caller) gets the same "whoosh" feeling reliably instead.
+/// (applied by the caller) gets the same "whoosh" feeling reliably instead. Custom games get the
+/// exact same treatment via `CustomLaunchOverlayView` below - previously they got nothing at all,
+/// so clicking Launch looked like it silently did nothing: "boot any game it should have the
+/// booting screen and also where it's at. for gamers thye just see the screen and think it didn't
+/// work," per live feedback.
 private struct LaunchOverlayView: View {
     let game: SteamGame
     let config: GameModeConfig
     @LocalState private var headerImagePath: String?
 
     var body: some View {
-        ZStack {
-            background
-            VStack(spacing: 14) {
-                Spacer()
-                Text(game.name)
-                    .font(.system(size: 34, weight: .bold))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                LoadingDotsView(message: "LAUNCHING…")
-                if !engineSummary.isEmpty {
-                    Text(engineSummary)
-                        .font(.callout)
-                        .foregroundStyle(.white.opacity(0.75))
-                }
-                Spacer()
+        LaunchOverlayContent(name: game.name, artworkPath: headerImagePath, statusLine: engineSummary)
+            .task {
+                headerImagePath = await SteamStoreInfoCache.shared.info(for: game.metadataAppID)?.headerImagePath
             }
-        }
-        // This overlay's background is always a dark blurred image regardless of system appearance,
-        // so force dark-mode semantic colors (.secondary etc. inside LoadingDotsView) rather than
-        // risking low-contrast mid-gray text if the system happens to be in light mode.
-        .colorScheme(.dark)
-        .task {
-            headerImagePath = await SteamStoreInfoCache.shared.info(for: game.metadataAppID)?.headerImagePath
-        }
-    }
-
-    @ViewBuilder
-    private var background: some View {
-        if let headerImagePath, let image = LocalImageCache.image(atPath: headerImagePath) {
-            Image(nsImage: image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .blur(radius: 40)
-                .overlay(Color.black.opacity(0.55))
-        } else {
-            LinearGradient(colors: [Color.accentColor.opacity(0.5), .black], startPoint: .top, endPoint: .bottom)
-        }
     }
 
     /// A native macOS Steam game runs through the real Steam app directly - no Wine, no engine, no
@@ -1408,6 +1409,64 @@ private struct LaunchOverlayView: View {
             parts.append("DXMT")
         }
         return parts.joined(separator: " • ")
+    }
+}
+
+/// The same launch takeover for a custom game - no async metadata fetch needed, since its artwork
+/// path is already sitting right on the model. `statusLine` names where it's actually launching
+/// *from* (Playdock itself, or a specific Sikarugir wrapper app when the launch was delegated to
+/// one) instead of an engine/D3D summary, which wouldn't mean anything to a player either way -
+/// "also...where it's at," per live feedback.
+private struct CustomLaunchOverlayView: View {
+    let game: CustomGame
+    let statusLine: String
+
+    var body: some View {
+        LaunchOverlayContent(name: game.effectiveName, artworkPath: game.effectiveArtworkPath, statusLine: statusLine)
+    }
+}
+
+private struct LaunchOverlayContent: View {
+    let name: String
+    let artworkPath: String?
+    let statusLine: String
+
+    var body: some View {
+        ZStack {
+            background
+            VStack(spacing: 14) {
+                Spacer()
+                Text(name)
+                    .font(.system(size: 34, weight: .bold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                LoadingDotsView(message: "LAUNCHING…")
+                if !statusLine.isEmpty {
+                    Text(statusLine)
+                        .font(.callout)
+                        .foregroundStyle(.white.opacity(0.75))
+                }
+                Spacer()
+            }
+        }
+        // This overlay's background is always a dark blurred image regardless of system appearance,
+        // so force dark-mode semantic colors (.secondary etc. inside LoadingDotsView) rather than
+        // risking low-contrast mid-gray text if the system happens to be in light mode.
+        .colorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        if let artworkPath, let image = LocalImageCache.image(atPath: artworkPath) {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .blur(radius: 40)
+                .overlay(Color.black.opacity(0.55))
+        } else {
+            LinearGradient(colors: [Color.accentColor.opacity(0.5), .black], startPoint: .top, endPoint: .bottom)
+        }
     }
 }
 
