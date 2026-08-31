@@ -7,8 +7,16 @@ enum ExeRunner {
 
     /// `nil` when the launch was delegated to a wrapper app (see below) - there's no `Process`
     /// handle to hand back in that case, only a request macOS itself fulfills asynchronously.
+    ///
+    /// `preferWrapperEngine`, when true and the target bottle isn't already a wrapper bottle (that
+    /// case always uses the wrapper app itself, below), runs the exe with a real Sikarugir wrapper
+    /// app's own bundled wine binary (see `SikarugirEngine.anyWrapperEngine`) instead of ExeDock's
+    /// own separately-downloaded engine - still against `bottle`'s own prefix, just with a
+    /// different engine reading it. Custom games use this - "just not use playdock's engine but
+    /// sikarugir's, it is guaranteed to work on that one," per live feedback. Falls back to
+    /// ExeDock's own engine if no Sikarugir wrapper app is actually installed to borrow one from.
     @discardableResult
-    static func run(exePath: String, in bottle: Bottle, arguments: [String] = [], config: GameModeConfig = GameModeConfig(), engineName: String? = nil) async throws -> Process? {
+    static func run(exePath: String, in bottle: Bottle, arguments: [String] = [], config: GameModeConfig = GameModeConfig(), engineName: String? = nil, preferWrapperEngine: Bool = false) async throws -> Process? {
         // A game living inside a *specific* Sikarugir wrapper's own bottle is launched by simply
         // opening that wrapper app itself - exactly, byte-for-byte, what double-clicking it in
         // Finder does, with no exe path or arguments handed to it at all. Two earlier, more
@@ -25,7 +33,8 @@ enum ExeRunner {
             return nil
         }
 
-        let wineBinary = try SikarugirEngine.wineBinaryPath(engineName: engineName ?? config.engineName)
+        let wrapperEngine = preferWrapperEngine ? SikarugirEngine.anyWrapperEngine() : nil
+        let wineBinary = try wrapperEngine?.wineBinary ?? SikarugirEngine.wineBinaryPath(engineName: engineName ?? config.engineName)
         if !bottle.isReadOnly {
             try BottleManager.shared.ensureInitialized(bottle, wineBinary: wineBinary)
         }
@@ -49,7 +58,14 @@ enum ExeRunner {
         process.currentDirectoryURL = URL(fileURLWithPath: (exePath as NSString).deletingLastPathComponent)
         var env = ProcessInfo.processInfo.environment
         env["WINEPREFIX"] = bottle.prefixPath
-        for (key, value) in try SikarugirEngine.runtimeEnvironment(engineName: engineName ?? config.engineName) { env[key] = value }
+        if let wrapperEngine {
+            // Must be paired with the *same* app's own lib/Frameworks - mixing a wrapper's wine
+            // binary with ExeDock's own downloaded engine's shared libraries risks a broken,
+            // version-mismatched mix.
+            env["DYLD_FALLBACK_LIBRARY_PATH"] = "\(wrapperEngine.frameworksDir):\(wrapperEngine.libDir)"
+        } else {
+            for (key, value) in try SikarugirEngine.runtimeEnvironment(engineName: engineName ?? config.engineName) { env[key] = value }
+        }
         for (key, value) in config.environment { env[key] = value }
         process.environment = env
         process.standardOutput = logHandle
