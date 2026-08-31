@@ -20,6 +20,7 @@ struct CustomGameCardView: View {
     @LocalState private var showingSettings = false
     @LocalState private var showingEdit = false
     @LocalState private var isHoveringArtwork = false
+    @LocalState private var isMoving = false
 
     private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.id] }
     private var hasCustomSettings: Bool { model.perGameConfigs[game.id] != nil }
@@ -132,6 +133,14 @@ struct CustomGameCardView: View {
             } label: {
                 Label("Refresh Metadata", systemImage: "arrow.clockwise")
             }
+            if !isMissing, !CustomGameFileImporter.isAlreadyManaged(exePath: game.exePath) {
+                Button {
+                    moveIntoManagedBottle()
+                } label: {
+                    Label("Move into Playdock's Bottle", systemImage: "shippingbox")
+                }
+                .disabled(isMoving)
+            }
             Divider()
             Button(role: .destructive) {
                 model.removeCustomGame(game)
@@ -243,6 +252,36 @@ struct CustomGameCardView: View {
         var updated = game
         updated.exePath = url.path
         model.updateCustomGame(updated)
+    }
+
+    /// Moves an already-imported game (one added before this existed, or picked from somewhere
+    /// Playdock decided not to move at the time) into Playdock's own managed bottle - the same move
+    /// `AddGameSheet` now does automatically for new imports, offered here as an explicit, opt-in
+    /// action instead of something Playdock would ever do to an existing game unasked. Exactly what
+    /// resolves "I have subliminal and dreamcore in the same bottle" for a game like Dreamcore that
+    /// currently lives inside a separate, third-party Sikarugir wrapper's own bottle - once moved,
+    /// it launches directly through Playdock's own engine like any other custom game, no wrapper
+    /// app involved at all.
+    private func moveIntoManagedBottle() {
+        isMoving = true
+        Task {
+            do {
+                let newExePath = try await Task.detached(priority: .utility) {
+                    try CustomGameFileImporter.importIntoManagedBottle(exePath: game.exePath, pickedFolderPath: nil)
+                }.value
+                var updated = game
+                updated.exePath = newExePath
+                await MainActor.run {
+                    model.updateCustomGame(updated)
+                    isMoving = false
+                }
+            } catch {
+                await MainActor.run {
+                    isMoving = false
+                    model.errorMessage = error.localizedDescription
+                }
+            }
+        }
     }
 
     /// Re-runs metadata discovery from scratch (local PE info, then a confident-only Steam match)
