@@ -370,7 +370,8 @@ final class AppModel: ObservableObject {
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
                 let process = try await ExeRunner.run(
-                    exePath: game.exePath, in: bottle, arguments: game.launchArguments, config: config
+                    exePath: game.exePath, in: bottle, arguments: game.launchArguments, config: config,
+                    preferWrapperEngine: true
                 )
                 // `nil` means the launch was delegated to a Sikarugir wrapper app (see
                 // `ExeRunner.run`'s own doc comment) rather than ExeDock running the exe itself -

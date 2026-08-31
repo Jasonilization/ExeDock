@@ -280,4 +280,28 @@ enum SikarugirEngine {
         }
         throw EngineError.noEngineFound
     }
+
+    /// The wine binary (and its matching `lib`/`Frameworks` directories, from that *same* app - a
+    /// wine binary paired with a mismatched engine's own shared libraries risks a broken/
+    /// incompatible mix) bundled inside any already-installed Sikarugir wrapper app - not tied to a
+    /// specific bottle, just "a real, already-working Sikarugir engine build on this Mac." Used for
+    /// custom game launches instead of ExeDock's own separately-downloaded engine - "just not use
+    /// playdock's engine but sikarugir's, it is guaranteed to work on that one," per live feedback.
+    static func anyWrapperEngine() -> (wineBinary: String, libDir: String, frameworksDir: String)? {
+        let fm = FileManager.default
+        let root = ("~/Applications/Sikarugir" as NSString).expandingTildeInPath
+        guard let apps = try? fm.contentsOfDirectory(atPath: root) else { return nil }
+        for app in apps where app.hasSuffix(".app") {
+            let appPath = (root as NSString).appendingPathComponent(app)
+            let wineBinary = appPath + "/Contents/SharedSupport/wine/bin/wine"
+            if fm.isExecutableFile(atPath: wineBinary) {
+                return (
+                    wineBinary: wineBinary,
+                    libDir: appPath + "/Contents/SharedSupport/wine/lib",
+                    frameworksDir: appPath + "/Contents/Frameworks"
+                )
+            }
+        }
+        return nil
+    }
 }
