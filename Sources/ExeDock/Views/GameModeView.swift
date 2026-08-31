@@ -582,7 +582,7 @@ struct GameModeView: View {
             // Shimmering placeholders in the exact grid the real cards will land in - reads as a
             // proper dashboard loading in, not just "something, somewhere, is thinking."
             LazyVGrid(columns: gridColumns, spacing: 20) {
-                ForEach(0..<6, id: \.self) { _ in GameCardSkeleton() }
+                ForEach(0..<6, id: \.self) { _ in GameCardSkeleton().frame(width: columnWidth) }
             }
         } else if model.steamGames.isEmpty && model.customGames.isEmpty {
             emptyGamesState
@@ -606,6 +606,16 @@ struct GameModeView: View {
                         } onOpenDetail: {
                             detailGame = game
                         }
+                        // Explicit, not left to the grid cell alone: real evidence (a screenshot)
+                        // showed each card's *artwork* bleeding edge-to-edge into its neighbor with
+                        // zero visible gap, while the text/button area below it was genuinely
+                        // spaced apart correctly - a `GridItem(.fixed(width))` column apparently
+                        // only governs *positioning*, not an enforced content-width ceiling, so a
+                        // card with no width constraint of its own can render wider than its column
+                        // and overlap the next one. This is the actual, confirmed cause of "library
+                        // cards still overlap," not the sizing math several earlier fixes kept
+                        // revisiting instead.
+                        .frame(width: columnWidth)
                     case .custom(let customGame):
                         CustomGameCardView(
                             game: customGame, isAdvancedMode: isAdvancedMode, artworkHeight: artworkHeight,
@@ -613,6 +623,7 @@ struct GameModeView: View {
                         ) {
                             detailCustomGame = customGame
                         }
+                        .frame(width: columnWidth)
                     }
                 }
             }
