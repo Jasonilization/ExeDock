@@ -590,7 +590,14 @@ struct GameModeView: View {
             }
             .animation(.easeInOut(duration: 0.2), value: model.steamGames)
             .animation(.easeInOut(duration: 0.2), value: model.customGames)
-            .animation(.easeInOut(duration: 0.2), value: cardSizeTier.maxWidth)
+            // Deliberately NOT animated (an earlier version animated `cardSizeTier.maxWidth`
+            // here): `LazyVGrid` doesn't reflow smoothly when its own column count/width changes -
+            // cards visibly cross over each other mid-transition instead of just resizing cleanly,
+            // a real, known SwiftUI limitation, not a bug in the sizing math itself. That got
+            // *worse*, not better, once `gridWidth` started updating on every pixel of a live
+            // window resize (previously coalesced differently) - many more overlapping transitions
+            // fired back-to-back instead of one clean settle. Snapping instantly avoids the whole
+            // category of glitch - "cards now overlap even more," per live feedback.
         }
     }
 

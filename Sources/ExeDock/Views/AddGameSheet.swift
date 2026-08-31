@@ -16,7 +16,12 @@ struct AddGameSheet: View {
     @LocalState private var isTargeted = false
     @LocalState private var pendingCandidates: [CandidateExecutable] = []
     @LocalState private var pendingFolderName = ""
+    /// The full path of a folder the user explicitly chose (via "Choose Folder…," or a dropped
+    /// folder) - `nil` when a lone exe was picked directly. Threaded through to
+    /// `CustomGameFileImporter`, which moves that whole folder as a unit when it's set.
+    @LocalState private var pendingFolderPath: String?
     @LocalState private var isDiscovering = false
+    @LocalState private var discoveringStatus = "Discovering game details…"
     @LocalState private var errorMessage: String?
     /// Which row is highlighted for controller navigation - 0/1 for the two method buttons on the
     /// chooser screen, or an index into `pendingCandidates` once a folder yields more than one.
@@ -156,7 +161,7 @@ struct AddGameSheet: View {
     private var discoveringView: some View {
         VStack(spacing: 16) {
             ProgressView().controlSize(.large)
-            Text("Discovering game details…")
+            Text(discoveringStatus)
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -189,7 +194,7 @@ struct AddGameSheet: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        beginDiscovery(exePath: url.path, folderName: nil)
+        beginDiscovery(exePath: url.path, folderName: nil, pickedFolderPath: nil)
     }
 
     private func chooseFolder() {
@@ -209,25 +214,43 @@ struct AddGameSheet: View {
         }
         errorMessage = nil
         if candidates.count == 1 {
-            beginDiscovery(exePath: candidates[0].path, folderName: folderName)
+            beginDiscovery(exePath: candidates[0].path, folderName: folderName, pickedFolderPath: path)
         } else {
             pendingFolderName = folderName
+            pendingFolderPath = path
             pendingCandidates = candidates
             focusedIndex = candidates.firstIndex(where: \.isBestGuess) ?? 0
         }
     }
 
     private func selectCandidate(_ candidate: CandidateExecutable) {
-        beginDiscovery(exePath: candidate.path, folderName: pendingFolderName)
+        beginDiscovery(exePath: candidate.path, folderName: pendingFolderName, pickedFolderPath: pendingFolderPath)
     }
 
-    private func beginDiscovery(exePath: String, folderName: String?) {
+    /// Discovers metadata, then moves the game into Playdock's own managed bottle - see
+    /// `CustomGameFileImporter`'s own doc comment for why. The move can take a while for a large
+    /// game folder (it's a real file copy across volumes when the source isn't on the same disk as
+    /// Playdock's own data), so it runs off the main thread with its own status text, same as
+    /// discovery itself already does.
+    private func beginDiscovery(exePath: String, folderName: String?, pickedFolderPath: String?) {
         isDiscovering = true
+        discoveringStatus = "Discovering game details…"
         Task {
             let discovered = await CustomGameMetadataDiscovery.discover(exePath: exePath, folderName: folderName)
-            await MainActor.run {
-                model.addCustomGame(CustomGame(exePath: exePath, discovered: discovered))
-                dismiss()
+            await MainActor.run { discoveringStatus = "Moving \(folderName ?? (exePath as NSString).lastPathComponent) into Playdock…" }
+            do {
+                let finalExePath = try await Task.detached(priority: .utility) {
+                    try CustomGameFileImporter.importIntoManagedBottle(exePath: exePath, pickedFolderPath: pickedFolderPath)
+                }.value
+                await MainActor.run {
+                    model.addCustomGame(CustomGame(exePath: finalExePath, discovered: discovered))
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isDiscovering = false
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }
@@ -262,7 +285,7 @@ struct AddGameSheet: View {
             handleFolder(at: url.path, folderName: url.lastPathComponent)
         } else if url.pathExtension.lowercased() == "exe" {
             errorMessage = nil
-            beginDiscovery(exePath: url.path, folderName: nil)
+            beginDiscovery(exePath: url.path, folderName: nil, pickedFolderPath: nil)
         } else {
             errorMessage = "Drop a .exe file or a game folder."
         }
