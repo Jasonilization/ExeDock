@@ -1,6 +1,16 @@
 import SwiftUI
 import AppKit
 
+/// The games grid's own measured available width, propagated up from the GeometryReader that
+/// measures it - see that measurement's own doc comment for why a PreferenceKey rather than a raw
+/// `.onChange` on the geometry value.
+private struct GridWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 /// Every controller-focusable spot on the main dashboard - the toolbar (Refresh/Settings), a card
 /// in the grid, or the floating Steam icon - covering "every clickable thing," not just the grid.
 private enum DashboardFocusTarget: Equatable {
@@ -26,10 +36,9 @@ struct GameModeView: View {
     /// (Refresh/Settings), a card in the grid, or the floating Steam icon. `nil` until the first
     /// D-pad press (mouse-only browsing shows no ring at all).
     @LocalState private var focusedTarget: DashboardFocusTarget?
-    /// The grid's own measured width, used to figure out how many columns are actually rendered
-    /// right now (the grid uses `.adaptive(minimum:maximum:)`, so the true column count depends on
-    /// window width, not a fixed number) - needed so D-pad up/down jumps a full row instead of just
-    /// "next card." See `gridColumnCount`.
+    /// The grid's own measured width - the grid's column count/width are computed directly from
+    /// this (see `columnCount`/`columnWidth`), not a fixed number, so this is also what lets
+    /// controller D-pad up/down jump a full row instead of just "next card."
     @LocalState private var gridWidth: CGFloat = 0
 
     private enum GameSortOption: String, CaseIterable, Identifiable {
@@ -136,19 +145,20 @@ struct GameModeView: View {
                     controllerBanner
                 }
                 Divider()
-                // The width measurement now comes from a GeometryReader wrapping the ScrollView
-                // itself, not from measuring the grid (or any of its scrollable content) directly.
-                // Two earlier attempts both measured something *downstream* of the grid's own
-                // sizing decision - the padded container around it, then the grid's own rendered
-                // size - and both were self-defeating in the same way: once `.adaptive(minimum:)`
-                // can't fit even one column in the space it was actually given, it renders at its
-                // own forced minimum width instead of shrinking to fit, so whatever wraps it always
-                // measures back a value *at least* as large as the minimum being tested - hiding
-                // the very overflow this was supposed to detect, so the clamp below could never
-                // engage for the cases that needed it most. A GeometryReader here instead measures
+                // The width measurement comes from a GeometryReader wrapping the ScrollView itself,
+                // not from measuring the grid (or any of its scrollable content) directly - two
+                // earlier attempts both measured something *downstream* of the grid's own sizing
+                // decision instead (the padded container around it, then the grid's own rendered
+                // size), and both were self-defeating in the same way: whatever wraps an overflowing
+                // child always measures back a value *at least* as large as the overflow itself,
+                // hiding the very thing this needed to detect. This GeometryReader instead measures
                 // what its own parent (this VStack) actually proposes to it - fixed by the outer
-                // layout, never inflated by an overflowing child - so it's finally a true, honest
-                // reading of the available space. "library cards still overlap," per live feedback.
+                // layout, never inflated by anything inside it - a true, honest reading of the
+                // available space. Propagated back up via the standard PreferenceKey mechanism
+                // (`GridWidthKey`), not a raw `.onChange` on the captured `geometry` value, for the
+                // same reason: it's the far more standard, battle-tested way to communicate a
+                // descendant's measured size back up a SwiftUI view tree. "library cards still
+                // overlap," repeated live feedback across several fixes at this same spot.
                 GeometryReader { geometry in
                     ScrollViewReader { scrollProxy in
                         ScrollView {
@@ -165,9 +175,11 @@ struct GameModeView: View {
                     }
                     // 48 = the VStack's own .padding(24) on each side, which sits between this
                     // measurement and the grid it's actually sizing for.
-                    .onAppear { gridWidth = max(0, geometry.size.width - 48) }
-                    .onChange(of: geometry.size.width) { newValue in gridWidth = max(0, newValue - 48) }
+                    .background(
+                        Color.clear.preference(key: GridWidthKey.self, value: max(0, geometry.size.width - 48))
+                    )
                 }
+                .onPreferenceChange(GridWidthKey.self) { gridWidth = $0 }
             }
 
             steamFloatingIcon
@@ -435,8 +447,8 @@ struct GameModeView: View {
 
     /// The card size a few-vs-many-games count alone would pick - big, prominent cards for a small
     /// library instead of sitting tiny in a corner of a mostly-empty window; a large library steps
-    /// down to a denser grid so more fits per screen. `cardSizeTier` below is what views actually
-    /// use - this is just the "ideal, plenty of room" starting point it clamps against.
+    /// down to a denser grid so more fits per screen. `columnWidth` below is what views actually
+    /// use - this is just the "ideal, plenty of room" starting point it's computed from.
     private var idealCardSizeTier: (minWidth: CGFloat, maxWidth: CGFloat, artworkHeight: CGFloat) {
         switch libraryEntries.count {
         case 0...2: return (480, 640, 260)
@@ -446,36 +458,52 @@ struct GameModeView: View {
         }
     }
 
-    /// The count-based ideal, clamped to whatever width the grid actually has right now -
-    /// previously sized purely off `libraryEntries.count`, which could demand a column wider than a
-    /// narrower window (or the UI-scale slider's reduced logical width) actually had room for,
-    /// overflowing off the right edge instead of adapting - "some are clipping off screen and it's
-    /// not very dynamic," per live feedback. Scales `maxWidth`/`artworkHeight` down by the same
-    /// ratio so a shrunk card still looks proportioned, not just narrower with the same tall art.
-    private var cardSizeTier: (minWidth: CGFloat, maxWidth: CGFloat, artworkHeight: CGFloat) {
+    private static let gridSpacing: CGFloat = 20
+
+    /// How many columns actually fit the grid's real, measured width at the *ideal* minimum card
+    /// size - the single source of truth for both the grid's own layout (`gridColumns`) and
+    /// controller D-pad row math (previously a separate, independently re-derived
+    /// `gridColumnCount` - two places computing "the same" thing risked exactly the kind of drift
+    /// that makes bugs like this one hard to pin down).
+    private var columnCount: Int {
+        guard gridWidth > 0 else { return 1 }
+        let minWidth = idealCardSizeTier.minWidth
+        return max(1, Int((gridWidth + Self.gridSpacing) / (minWidth + Self.gridSpacing)))
+    }
+
+    /// The exact width `columnCount` columns need to fill the grid's real available width, computed
+    /// directly with plain arithmetic - not `.adaptive(minimum:maximum:)`, whose exact behavior once
+    /// even its own minimum can't fit turned out to be exactly what several earlier attempts at this
+    /// kept tripping over, in different ways, without ever actually stopping the overlap ("library
+    /// cards still overlap," repeated live feedback across several fixes each aimed at working
+    /// around that algorithm instead of just not depending on it). `columnCount` is chosen as the
+    /// largest number of *at least* `idealCardSizeTier.minWidth`-wide columns that fit - so the fair
+    /// share computed here for that same count is, by construction, never less than that minimum
+    /// and never sums past `gridWidth` for real; the one exception (a window so narrow even a single
+    /// column can't reach that minimum) still fits exactly, since `columnCount` floors at 1 and
+    /// this divides the *actual* available width across it rather than clamping to a fixed floor
+    /// after the fact.
+    private var columnWidth: CGFloat {
+        guard gridWidth > 0 else { return idealCardSizeTier.minWidth }
+        let count = CGFloat(columnCount)
+        // A 1pt safety margin against floating-point rounding - `columnCount * raw` summing back to
+        // a hair over `gridWidth` due to imprecision, not a logic error, is still worth guarding
+        // against outright given how many attempts this exact symptom has already taken.
+        let raw = (gridWidth - 1 - Self.gridSpacing * (count - 1)) / count
+        return min(raw, idealCardSizeTier.maxWidth)
+    }
+
+    /// Artwork height scaled down alongside `columnWidth` when it's had to shrink below the ideal
+    /// tier's own minimum, so a narrowed card still looks proportioned instead of narrower with the
+    /// same tall art riding on top of it.
+    private var artworkHeight: CGFloat {
         let ideal = idealCardSizeTier
-        guard gridWidth > 0, ideal.minWidth > gridWidth else { return ideal }
-        // A few points of slack, not an exact fit to `gridWidth` - a column sized to *precisely*
-        // the available width leaves zero margin for a stale measurement (one render frame behind
-        // an in-progress resize) or floating-point rounding to tip it back into overflow.
-        let clampedMin = max(160, gridWidth - 4)
-        let scale = clampedMin / ideal.minWidth
-        return (clampedMin, max(clampedMin, ideal.maxWidth * scale), max(90, ideal.artworkHeight * scale))
+        let scale = min(1, columnWidth / ideal.minWidth)
+        return max(90, ideal.artworkHeight * scale)
     }
 
     private var gridColumns: [GridItem] {
-        let tier = cardSizeTier
-        return [GridItem(.adaptive(minimum: tier.minWidth, maximum: tier.maxWidth), spacing: 20)]
-    }
-
-    /// How many columns `.adaptive(minimum:maximum:)` is actually rendering right now, worked out
-    /// from the grid's own measured width the same way SwiftUI itself would - needed so controller
-    /// D-pad up/down can jump a full row instead of just "next card" in array order.
-    private var gridColumnCount: Int {
-        let spacing: CGFloat = 20
-        let minWidth = cardSizeTier.minWidth
-        guard gridWidth > 0, minWidth > 0 else { return 1 }
-        return max(1, Int((gridWidth + spacing) / (minWidth + spacing)))
+        Array(repeating: GridItem(.fixed(columnWidth), spacing: Self.gridSpacing), count: columnCount)
     }
 
     /// Only active while nothing's covering the dashboard (no Game Detail view, no Controller Mode
@@ -486,9 +514,9 @@ struct GameModeView: View {
     }
 
     /// Real 2D movement across every focusable spot on the dashboard: the toolbar row above the
-    /// grid, the grid itself (up/down jump a full row via `gridColumnCount`, left/right stop at
-    /// row edges instead of wrapping into the row above/below), and the floating Steam icon beyond
-    /// the grid's last row.
+    /// grid, the grid itself (up/down jump a full row via `columnCount`, left/right stop at row
+    /// edges instead of wrapping into the row above/below), and the floating Steam icon beyond the
+    /// grid's last row.
     private func moveFocus(_ direction: ControllerDirection) {
         guard let current = focusedTarget else {
             focusedTarget = libraryEntries.isEmpty ? .toolbar(0) : .card(0)
@@ -503,7 +531,7 @@ struct GameModeView: View {
             case .up: break
             }
         case .card(let index):
-            let columns = gridColumnCount
+            let columns = columnCount
             switch direction {
             case .left:
                 guard index % columns != 0 else { return }
@@ -571,7 +599,7 @@ struct GameModeView: View {
                     switch entry {
                     case .steam(let game):
                         GameCardView(
-                            game: game, isAdvancedMode: isAdvancedMode, artworkHeight: cardSizeTier.artworkHeight,
+                            game: game, isAdvancedMode: isAdvancedMode, artworkHeight: artworkHeight,
                             isFocused: isFocused
                         ) {
                             launchOverlayGame = game
@@ -580,7 +608,7 @@ struct GameModeView: View {
                         }
                     case .custom(let customGame):
                         CustomGameCardView(
-                            game: customGame, isAdvancedMode: isAdvancedMode, artworkHeight: cardSizeTier.artworkHeight,
+                            game: customGame, isAdvancedMode: isAdvancedMode, artworkHeight: artworkHeight,
                             isFocused: isFocused
                         ) {
                             detailCustomGame = customGame
@@ -590,14 +618,10 @@ struct GameModeView: View {
             }
             .animation(.easeInOut(duration: 0.2), value: model.steamGames)
             .animation(.easeInOut(duration: 0.2), value: model.customGames)
-            // Deliberately NOT animated (an earlier version animated `cardSizeTier.maxWidth`
-            // here): `LazyVGrid` doesn't reflow smoothly when its own column count/width changes -
-            // cards visibly cross over each other mid-transition instead of just resizing cleanly,
-            // a real, known SwiftUI limitation, not a bug in the sizing math itself. That got
-            // *worse*, not better, once `gridWidth` started updating on every pixel of a live
-            // window resize (previously coalesced differently) - many more overlapping transitions
-            // fired back-to-back instead of one clean settle. Snapping instantly avoids the whole
-            // category of glitch - "cards now overlap even more," per live feedback.
+            // Deliberately NOT animated on column size - `LazyVGrid` doesn't reflow smoothly when
+            // its own column count/width changes, and this grid's own sizing changes often (every
+            // resize, every count-driven tier change), so an implicit animation on it means near-
+            // constant transitions with real potential to visibly overlap mid-flight.
         }
     }
 
