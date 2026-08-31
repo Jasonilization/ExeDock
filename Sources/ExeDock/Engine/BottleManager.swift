@@ -11,7 +11,13 @@ final class BottleManager {
 
     private init() {
         try? FileManager.default.createDirectory(atPath: bottlesRoot, withIntermediateDirectories: true)
-        defaultBottle = Bottle(name: "Default", prefixPath: (bottlesRoot as NSString).appendingPathComponent("Default"), kind: .owned)
+        // Named "Playdock", not "Default" - this is the one shared bottle every custom game (and
+        // any dropped .exe with nowhere else to go) actually lands in, so it should read as
+        // Playdock's own bottle wherever its name surfaces (the C: drive browser, launch overlay,
+        // "Opened <bottle.name>…" status line) rather than a generic internal label. The on-disk
+        // folder name stays "Default" on purpose - renaming *that* would orphan every existing
+        // user's already-imported custom games on update, for a rename nobody asked for.
+        defaultBottle = Bottle(name: "Playdock", prefixPath: (bottlesRoot as NSString).appendingPathComponent("Default"), kind: .owned)
         steamBottle = Bottle(name: "Steam", prefixPath: (bottlesRoot as NSString).appendingPathComponent("Steam"), kind: .owned)
     }
 

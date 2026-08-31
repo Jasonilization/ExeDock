@@ -1488,8 +1488,7 @@ struct GameSettingsFields: View {
         }
 
         Section("Sync") {
-            Toggle("WINEESYNC", isOn: $config.wineESync)
-            Toggle("WINEMSYNC", isOn: $config.wineMSync)
+            Toggle("Fast Sync (ESYNC + MSYNC)", isOn: $config.fastSync)
         }
     }
 }
@@ -1696,7 +1695,7 @@ private struct DefaultSettingsSheet: View {
             }
             .formStyle(.grouped)
         }
-        .frame(width: 420, height: isAdvancedMode ? 660 : 380)
+        .frame(width: 420, height: isAdvancedMode ? 620 : 380)
         .animation(.easeInOut(duration: 0.2), value: isAdvancedMode)
     }
 }
