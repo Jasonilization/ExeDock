@@ -37,9 +37,9 @@ struct GameModeView: View {
     /// (Refresh/Settings), a card in the grid, or the floating Steam icon. `nil` until the first
     /// D-pad press (mouse-only browsing shows no ring at all).
     @LocalState private var focusedTarget: DashboardFocusTarget?
-    /// The grid's own measured width - the grid's column count/width are computed directly from
-    /// this (see `columnCount`/`columnWidth`), not a fixed number, so this is also what lets
-    /// controller D-pad up/down jump a full row instead of just "next card."
+    /// The grid's own measured width - used only for controller D-pad row math (`columnCount`), not
+    /// the grid's actual rendering (that's plain `.adaptive`, handled natively by SwiftUI). See
+    /// `gridColumns`'s own doc comment for why this split matters.
     @LocalState private var gridWidth: CGFloat = 0
 
     private enum GameSortOption: String, CaseIterable, Identifiable {
@@ -474,10 +474,9 @@ struct GameModeView: View {
         }
     }
 
-    /// The card size a few-vs-many-games count alone would pick - big, prominent cards for a small
+    /// The card size a few-vs-many-games count alone picks - big, prominent cards for a small
     /// library instead of sitting tiny in a corner of a mostly-empty window; a large library steps
-    /// down to a denser grid so more fits per screen. `columnWidth` below is what views actually
-    /// use - this is just the "ideal, plenty of room" starting point it's computed from.
+    /// down to a denser grid so more fits per screen.
     private var idealCardSizeTier: (minWidth: CGFloat, maxWidth: CGFloat, artworkHeight: CGFloat) {
         switch libraryEntries.count {
         case 0...2: return (480, 640, 260)
@@ -489,51 +488,34 @@ struct GameModeView: View {
 
     private static let gridSpacing: CGFloat = 20
 
-    /// How many columns actually fit the grid's real, measured width at the *ideal* minimum card
-    /// size - the single source of truth for both the grid's own layout (`gridColumns`) and
-    /// controller D-pad row math (previously a separate, independently re-derived
-    /// `gridColumnCount` - two places computing "the same" thing risked exactly the kind of drift
-    /// that makes bugs like this one hard to pin down).
+    /// The grid's own column layout, back to plain `.adaptive(minimum:maximum:)` - SwiftUI works
+    /// out how many columns actually fit *natively*, using the grid's own real proposed width
+    /// directly, with no external measurement of any kind needed. A self-computed column count/
+    /// width (an earlier version of this) needed `gridWidth` - measured via a GeometryReader
+    /// elsewhere in this view - to be correct and current at the moment the grid renders, and in
+    /// practice that measurement didn't reliably arrive: confirmed live via a screenshot showing
+    /// the grid stuck rendering a single narrow column with a large empty area beside it - the
+    /// exact fallback behavior of a stale/zero measurement, not a sizing-math error. `.adaptive`
+    /// sidesteps the whole dependency by not needing that value at all. Card *width enforcement*
+    /// (`.frame(maxWidth: .infinity)` at each call site, below) still fixes the real, separately-
+    /// confirmed overlap cause (a card rendering wider than its own column) without needing an
+    /// exact pixel value either - it just fills whatever `.adaptive` already decided.
+    private var gridColumns: [GridItem] {
+        let tier = idealCardSizeTier
+        return [GridItem(.adaptive(minimum: tier.minWidth, maximum: tier.maxWidth), spacing: Self.gridSpacing)]
+    }
+
+    /// Best-effort column count for controller D-pad row math only (`moveFocus`) - *not* used for
+    /// the grid's own rendering anymore, so an imprecise `gridWidth` measurement here can make
+    /// D-pad up/down jump the "wrong" number of cards at worst, never break the actual visual
+    /// layout the way it did when this same measurement was load-bearing for column count itself.
     private var columnCount: Int {
         guard gridWidth > 0 else { return 1 }
         let minWidth = idealCardSizeTier.minWidth
         return max(1, Int((gridWidth + Self.gridSpacing) / (minWidth + Self.gridSpacing)))
     }
 
-    /// The exact width `columnCount` columns need to fill the grid's real available width, computed
-    /// directly with plain arithmetic - not `.adaptive(minimum:maximum:)`, whose exact behavior once
-    /// even its own minimum can't fit turned out to be exactly what several earlier attempts at this
-    /// kept tripping over, in different ways, without ever actually stopping the overlap ("library
-    /// cards still overlap," repeated live feedback across several fixes each aimed at working
-    /// around that algorithm instead of just not depending on it). `columnCount` is chosen as the
-    /// largest number of *at least* `idealCardSizeTier.minWidth`-wide columns that fit - so the fair
-    /// share computed here for that same count is, by construction, never less than that minimum
-    /// and never sums past `gridWidth` for real; the one exception (a window so narrow even a single
-    /// column can't reach that minimum) still fits exactly, since `columnCount` floors at 1 and
-    /// this divides the *actual* available width across it rather than clamping to a fixed floor
-    /// after the fact.
-    private var columnWidth: CGFloat {
-        guard gridWidth > 0 else { return idealCardSizeTier.minWidth }
-        let count = CGFloat(columnCount)
-        // A 1pt safety margin against floating-point rounding - `columnCount * raw` summing back to
-        // a hair over `gridWidth` due to imprecision, not a logic error, is still worth guarding
-        // against outright given how many attempts this exact symptom has already taken.
-        let raw = (gridWidth - 1 - Self.gridSpacing * (count - 1)) / count
-        return min(raw, idealCardSizeTier.maxWidth)
-    }
-
-    /// Artwork height scaled down alongside `columnWidth` when it's had to shrink below the ideal
-    /// tier's own minimum, so a narrowed card still looks proportioned instead of narrower with the
-    /// same tall art riding on top of it.
-    private var artworkHeight: CGFloat {
-        let ideal = idealCardSizeTier
-        let scale = min(1, columnWidth / ideal.minWidth)
-        return max(90, ideal.artworkHeight * scale)
-    }
-
-    private var gridColumns: [GridItem] {
-        Array(repeating: GridItem(.fixed(columnWidth), spacing: Self.gridSpacing), count: columnCount)
-    }
+    private var artworkHeight: CGFloat { idealCardSizeTier.artworkHeight }
 
     /// Only active while nothing's covering the dashboard (no Game Detail view, no Controller Mode
     /// carousel) - both of those own the same D-pad/A stream the instant they're shown, per
@@ -611,7 +593,7 @@ struct GameModeView: View {
             // Shimmering placeholders in the exact grid the real cards will land in - reads as a
             // proper dashboard loading in, not just "something, somewhere, is thinking."
             LazyVGrid(columns: gridColumns, spacing: 20) {
-                ForEach(0..<6, id: \.self) { _ in GameCardSkeleton().frame(width: columnWidth) }
+                ForEach(0..<6, id: \.self) { _ in GameCardSkeleton().frame(maxWidth: .infinity) }
             }
         } else if model.steamGames.isEmpty && model.customGames.isEmpty {
             emptyGamesState
@@ -644,7 +626,7 @@ struct GameModeView: View {
                         // and overlap the next one. This is the actual, confirmed cause of "library
                         // cards still overlap," not the sizing math several earlier fixes kept
                         // revisiting instead.
-                        .frame(width: columnWidth)
+                        .frame(maxWidth: .infinity)
                     case .custom(let customGame):
                         CustomGameCardView(
                             game: customGame, isAdvancedMode: isAdvancedMode, artworkHeight: artworkHeight,
@@ -654,7 +636,7 @@ struct GameModeView: View {
                         } onOpenDetail: {
                             detailCustomGame = customGame
                         }
-                        .frame(width: columnWidth)
+                        .frame(maxWidth: .infinity)
                     }
                 }
             }
