@@ -497,9 +497,11 @@ struct GameModeView: View {
     /// the grid stuck rendering a single narrow column with a large empty area beside it - the
     /// exact fallback behavior of a stale/zero measurement, not a sizing-math error. `.adaptive`
     /// sidesteps the whole dependency by not needing that value at all. Card *width enforcement*
-    /// (`.frame(maxWidth: .infinity)` at each call site, below) still fixes the real, separately-
-    /// confirmed overlap cause (a card rendering wider than its own column) without needing an
-    /// exact pixel value either - it just fills whatever `.adaptive` already decided.
+    /// (`.frame(maxWidth: idealCardSizeTier.maxWidth)` at each call site, below) still fixes the
+    /// real, separately-confirmed overlap cause (a card rendering wider than its own column) - with
+    /// a real, static ceiling this time, not `.infinity`, after a second screenshot showed genuine
+    /// z-index stacking on a *partial* last row, where nothing stopped a card from growing
+    /// arbitrarily wide with no upper bound at all.
     private var gridColumns: [GridItem] {
         let tier = idealCardSizeTier
         return [GridItem(.adaptive(minimum: tier.minWidth, maximum: tier.maxWidth), spacing: Self.gridSpacing)]
@@ -593,7 +595,7 @@ struct GameModeView: View {
             // Shimmering placeholders in the exact grid the real cards will land in - reads as a
             // proper dashboard loading in, not just "something, somewhere, is thinking."
             LazyVGrid(columns: gridColumns, spacing: 20) {
-                ForEach(0..<6, id: \.self) { _ in GameCardSkeleton().frame(maxWidth: .infinity) }
+                ForEach(0..<6, id: \.self) { _ in GameCardSkeleton().frame(maxWidth: idealCardSizeTier.maxWidth) }
             }
         } else if model.steamGames.isEmpty && model.customGames.isEmpty {
             emptyGamesState
@@ -620,13 +622,19 @@ struct GameModeView: View {
                         // Explicit, not left to the grid cell alone: real evidence (a screenshot)
                         // showed each card's *artwork* bleeding edge-to-edge into its neighbor with
                         // zero visible gap, while the text/button area below it was genuinely
-                        // spaced apart correctly - a `GridItem(.fixed(width))` column apparently
+                        // spaced apart correctly - a `GridItem(.adaptive(...))` column apparently
                         // only governs *positioning*, not an enforced content-width ceiling, so a
-                        // card with no width constraint of its own can render wider than its column
-                        // and overlap the next one. This is the actual, confirmed cause of "library
-                        // cards still overlap," not the sizing math several earlier fixes kept
-                        // revisiting instead.
-                        .frame(maxWidth: .infinity)
+                        // card with no width ceiling of its own can render wider than its column and
+                        // overlap the next one. `maxWidth: .infinity` (an earlier version of this
+                        // fix) turned out to have no real ceiling at all - fine for a full row, but
+                        // a real, second, separately-confirmed overlap (this time genuine z-index
+                        // stacking, via another screenshot) showed up specifically on a *partial*
+                        // last row, where nothing was left to stop a card from growing arbitrarily
+                        // wide. `idealCardSizeTier.maxWidth` is a real, static ceiling - not tied to
+                        // any measurement - matching the exact same maximum `.adaptive` itself
+                        // already uses for this same tier, so it can never disagree with the grid's
+                        // own column math.
+                        .frame(maxWidth: idealCardSizeTier.maxWidth)
                     case .custom(let customGame):
                         CustomGameCardView(
                             game: customGame, isAdvancedMode: isAdvancedMode, artworkHeight: artworkHeight,
@@ -636,7 +644,7 @@ struct GameModeView: View {
                         } onOpenDetail: {
                             detailCustomGame = customGame
                         }
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: idealCardSizeTier.maxWidth)
                     }
                 }
             }
