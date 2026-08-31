@@ -9,26 +9,19 @@ enum ExeRunner {
     /// handle to hand back in that case, only a request macOS itself fulfills asynchronously.
     @discardableResult
     static func run(exePath: String, in bottle: Bottle, arguments: [String] = [], config: GameModeConfig = GameModeConfig(), engineName: String? = nil) async throws -> Process? {
-        // A game living inside a *specific* Sikarugir wrapper's own bottle is launched by handing
-        // the exe straight to that wrapper app itself - exactly like dragging the exe onto it, or
-        // macOS's own "Open With," would - rather than ExeDock trying to reconstruct that engine's
-        // own DirectX-backend setup itself. Real, verified mechanism: the wrapper's own Info.plist
-        // declares itself able to open *any* file (`CFBundleDocumentTypes` with a wildcard `*`
-        // extension) - Sikarugir/Wineskin's own standard "run this instead of my configured default
-        // program" convention. This replaces an earlier, more ambitious attempt at reconstructing
-        // that wrapper's real D3DMetal/DXVK activation (WINEDLLOVERRIDES, `CX_D3DMETALPATH`,
-        // reverse-engineered from its own binary) - that attempt didn't just fail to help, it made
-        // launches hang outright, strictly worse than before. The wrapper app already knows exactly
-        // how to run anything in its own bottle correctly; ExeDock doesn't need to know how -
-        // "everything from sikarugir works... just do that," per live feedback.
+        // A game living inside a *specific* Sikarugir wrapper's own bottle is launched by simply
+        // opening that wrapper app itself - exactly, byte-for-byte, what double-clicking it in
+        // Finder does, with no exe path or arguments handed to it at all. Two earlier, more
+        // "automated" attempts at this - forcing the wrapper's own wine binary directly, then
+        // handing it the target exe via macOS's "Open With" file-association mechanism - both
+        // failed for real, different reasons (a hang, then still not actually launching the game),
+        // despite each being based on real, verified evidence about how that wrapper works
+        // internally. The one thing actually confirmed to work, repeatedly, is opening the wrapper
+        // app exactly the way its own user already does by hand - so that's what this does now,
+        // full stop, instead of a fourth attempt at reverse-engineering its internals: "let it go
+        // from sikarugir directly... use its wrapper, everything the same," per live feedback.
         if case .sikarugirWrapper(let appPath) = bottle.kind {
-            let openConfig = NSWorkspace.OpenConfiguration()
-            openConfig.arguments = arguments
-            _ = try await NSWorkspace.shared.open(
-                [URL(fileURLWithPath: exePath)],
-                withApplicationAt: URL(fileURLWithPath: appPath),
-                configuration: openConfig
-            )
+            try await NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: appPath), configuration: NSWorkspace.OpenConfiguration())
             return nil
         }
 
