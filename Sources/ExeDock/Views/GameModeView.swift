@@ -1,16 +1,6 @@
 import SwiftUI
 import AppKit
 
-/// The games grid's own measured width - the grid uses `.adaptive(minimum:maximum:)` columns, so
-/// how many actually render depends on the window's current width, not a fixed number. Read via
-/// `GameModeView`'s `gridWidth` state so controller D-pad up/down can jump a full row.
-private struct GridWidthKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 /// Every controller-focusable spot on the main dashboard - the toolbar (Refresh/Settings), a card
 /// in the grid, or the floating Steam icon - covering "every clickable thing," not just the grid.
 private enum DashboardFocusTarget: Equatable {
@@ -146,32 +136,37 @@ struct GameModeView: View {
                     controllerBanner
                 }
                 Divider()
-                ScrollViewReader { scrollProxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
-                            searchBar
-                            // The GeometryReader sits on `gamesGrid` itself, inside the padding -
-                            // not the outer, still-padded VStack - so `gridWidth` measures the
-                            // grid's own true available width exactly, with nothing to subtract or
-                            // guess at. Measuring the padded container instead (an earlier version
-                            // of this) reported a value ~48pt wider than what the grid actually had
-                            // to lay columns out in, so a clamped column could still overflow its
-                            // real space by that same 48pt - the real cause of cards still
-                            // overlapping/clipping at some sizes despite being "clamped."
-                            gamesGrid
-                                .background(
-                                    GeometryReader { geometry in
-                                        Color.clear.preference(key: GridWidthKey.self, value: geometry.size.width)
-                                    }
-                                )
+                // The width measurement now comes from a GeometryReader wrapping the ScrollView
+                // itself, not from measuring the grid (or any of its scrollable content) directly.
+                // Two earlier attempts both measured something *downstream* of the grid's own
+                // sizing decision - the padded container around it, then the grid's own rendered
+                // size - and both were self-defeating in the same way: once `.adaptive(minimum:)`
+                // can't fit even one column in the space it was actually given, it renders at its
+                // own forced minimum width instead of shrinking to fit, so whatever wraps it always
+                // measures back a value *at least* as large as the minimum being tested - hiding
+                // the very overflow this was supposed to detect, so the clamp below could never
+                // engage for the cases that needed it most. A GeometryReader here instead measures
+                // what its own parent (this VStack) actually proposes to it - fixed by the outer
+                // layout, never inflated by an overflowing child - so it's finally a true, honest
+                // reading of the available space. "library cards still overlap," per live feedback.
+                GeometryReader { geometry in
+                    ScrollViewReader { scrollProxy in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 20) {
+                                searchBar
+                                gamesGrid
+                            }
+                            .padding(24)
                         }
-                        .padding(24)
+                        .onChange(of: focusedTarget) { target in
+                            guard case .card(let index) = target, libraryEntries.indices.contains(index) else { return }
+                            withAnimation { scrollProxy.scrollTo(libraryEntries[index].id, anchor: .center) }
+                        }
                     }
-                    .onPreferenceChange(GridWidthKey.self) { gridWidth = $0 }
-                    .onChange(of: focusedTarget) { target in
-                        guard case .card(let index) = target, libraryEntries.indices.contains(index) else { return }
-                        withAnimation { scrollProxy.scrollTo(libraryEntries[index].id, anchor: .center) }
-                    }
+                    // 48 = the VStack's own .padding(24) on each side, which sits between this
+                    // measurement and the grid it's actually sizing for.
+                    .onAppear { gridWidth = max(0, geometry.size.width - 48) }
+                    .onChange(of: geometry.size.width) { newValue in gridWidth = max(0, newValue - 48) }
                 }
             }
 
@@ -460,7 +455,10 @@ struct GameModeView: View {
     private var cardSizeTier: (minWidth: CGFloat, maxWidth: CGFloat, artworkHeight: CGFloat) {
         let ideal = idealCardSizeTier
         guard gridWidth > 0, ideal.minWidth > gridWidth else { return ideal }
-        let clampedMin = max(160, gridWidth)
+        // A few points of slack, not an exact fit to `gridWidth` - a column sized to *precisely*
+        // the available width leaves zero margin for a stale measurement (one render frame behind
+        // an in-progress resize) or floating-point rounding to tip it back into overflow.
+        let clampedMin = max(160, gridWidth - 4)
         let scale = clampedMin / ideal.minWidth
         return (clampedMin, max(clampedMin, ideal.maxWidth * scale), max(90, ideal.artworkHeight * scale))
     }
