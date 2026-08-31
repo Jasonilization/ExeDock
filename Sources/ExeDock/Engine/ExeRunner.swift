@@ -5,32 +5,54 @@ import AppKit
 enum ExeRunner {
     static let logsDir = ("~/Library/Logs/ExeDock" as NSString).expandingTildeInPath
 
-    /// `nil` when the launch was delegated to a wrapper app (see below) - there's no `Process`
-    /// handle to hand back in that case, only a request macOS itself fulfills asynchronously.
-    ///
     /// `preferWrapperEngine`, when true and the target bottle isn't already a wrapper bottle (that
-    /// case always uses the wrapper app itself, below), runs the exe with a real Sikarugir wrapper
-    /// app's own bundled wine binary (see `SikarugirEngine.anyWrapperEngine`) instead of ExeDock's
-    /// own separately-downloaded engine - still against `bottle`'s own prefix, just with a
+    /// case always uses that wrapper's own launcher, below), runs the exe with a real Sikarugir
+    /// wrapper app's own bundled wine binary (see `SikarugirEngine.anyWrapperEngine`) instead of
+    /// ExeDock's own separately-downloaded engine - still against `bottle`'s own prefix, just with a
     /// different engine reading it. Custom games use this - "just not use playdock's engine but
     /// sikarugir's, it is guaranteed to work on that one," per live feedback. Falls back to
     /// ExeDock's own engine if no Sikarugir wrapper app is actually installed to borrow one from.
     @discardableResult
     static func run(exePath: String, in bottle: Bottle, arguments: [String] = [], config: GameModeConfig = GameModeConfig(), engineName: String? = nil, preferWrapperEngine: Bool = false) async throws -> Process? {
-        // A game living inside a *specific* Sikarugir wrapper's own bottle is launched by simply
-        // opening that wrapper app itself - exactly, byte-for-byte, what double-clicking it in
-        // Finder does, with no exe path or arguments handed to it at all. Two earlier, more
-        // "automated" attempts at this - forcing the wrapper's own wine binary directly, then
-        // handing it the target exe via macOS's "Open With" file-association mechanism - both
-        // failed for real, different reasons (a hang, then still not actually launching the game),
-        // despite each being based on real, verified evidence about how that wrapper works
-        // internally. The one thing actually confirmed to work, repeatedly, is opening the wrapper
-        // app exactly the way its own user already does by hand - so that's what this does now,
-        // full stop, instead of a fourth attempt at reverse-engineering its internals: "let it go
-        // from sikarugir directly... use its wrapper, everything the same," per live feedback.
+        // A game living inside a *specific* Sikarugir wrapper's own bottle is launched through that
+        // wrapper's own launcher binary (Contents/MacOS/Sikarugir - the same binary its
+        // CFBundleExecutable points at, just invoked directly instead of through Finder/
+        // LaunchServices) using its own real, documented CLI: `sikarugir run <file> [flags]` -
+        // confirmed by reading that binary's own embedded `strings` output, which includes its
+        // full `Usage: sikarugir [options] ...` help text verbatim (down to the literal source
+        // file name, `Sikarugir/SikarugirCliAdapter.swift`) - not a guess. Critically, that same
+        // help text also documents `(no options)` as "run (or debug) main bat/msi/exe file" - i.e.
+        // launching the wrapper with no arguments at all runs whatever it's already configured for
+        // by default, completely unrelated to which specific custom game was actually clicked in
+        // Playdock. That's confirmed as the real, exact cause of a real bug: launching "Subliminal"
+        // instead started a stale, already-crashed "Dreamcore" process, because that happened to be
+        // this particular bottle's own configured default. Passing `run <exePath>` explicitly,
+        // every single launch, is what "should change and load the exe path to the right everytime
+        // for what game launched" actually requires - not just opening the app and hoping.
         if case .sikarugirWrapper(let appPath) = bottle.kind {
-            try await NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: appPath), configuration: NSWorkspace.OpenConfiguration())
-            return nil
+            let launcherBinary = appPath + "/Contents/MacOS/Sikarugir"
+            guard FileManager.default.isExecutableFile(atPath: launcherBinary) else {
+                // Its own launcher isn't where expected - opening the app is still better than a
+                // hard failure, even though it can't target the right exe this way.
+                try await NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: appPath), configuration: NSWorkspace.OpenConfiguration())
+                return nil
+            }
+
+            try? FileManager.default.createDirectory(atPath: logsDir, withIntermediateDirectories: true)
+            let timestamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+            let baseName = (exePath as NSString).lastPathComponent
+            let logPath = (logsDir as NSString).appendingPathComponent("\(baseName)-\(timestamp).log")
+            FileManager.default.createFile(atPath: logPath, contents: nil)
+            let logHandle = FileHandle(forWritingAtPath: logPath)
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: launcherBinary)
+            process.arguments = ["run", exePath] + arguments
+            process.currentDirectoryURL = URL(fileURLWithPath: (exePath as NSString).deletingLastPathComponent)
+            process.standardOutput = logHandle
+            process.standardError = logHandle
+            try process.run()
+            return process
         }
 
         let wrapperEngine = preferWrapperEngine ? SikarugirEngine.anyWrapperEngine() : nil
