@@ -8,6 +8,27 @@ box art, a short description, your account's name and avatar - with a big icon y
 open Steam itself, same as you would on the desktop. Drag-and-drop `.exe` support is still in here
 too, tucked under "Exe Loader" in the sidebar for when you just need to run something once.
 
+## Installing
+
+**Homebrew:**
+
+```sh
+brew install --cask jasonilization/playdock/playdock
+```
+
+**Manual:** grab the `.dmg` from [Releases](../../releases) and drag the app into `/Applications`.
+
+Either way, it's signed with a free Apple Development identity rather than a paid Developer ID, so
+it's not notarized - Gatekeeper will call it out as being from an unidentified developer on first
+launch. Right-click the app → **Open**, or:
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/Playdock.app"
+```
+
+Requires Sikarugir Creator to already be installed, with at least one Wine engine downloaded
+(`~/Library/Application Support/Sikarugir/Engines/`) - that's the engine this app reuses.
+
 ## Contact & Support
 
 **thesuperjasonprocoolisplay@hotmail.com**
@@ -67,29 +88,6 @@ No Xcode required, just Swift + Command Line Tools:
 ./Scripts/build_app.sh        # swift build -c release, assemble Playdock.app, codesign
 ./Scripts/make_dmg.sh 1.2.0   # package dist/Playdock-1.2.0.dmg
 ```
-
-## Installing
-
-**Homebrew:**
-
-```sh
-brew install --cask jasonilization/playdock/playdock
-```
-
-**Manual:** grab the `.dmg` from [Releases](../../releases) and drag the app into `/Applications`.
-
-Either way, it's signed with a free Apple Development identity rather than a paid Developer ID, so
-it's not notarized - Gatekeeper will call it out as being from an unidentified developer on first
-launch. Right-click the app → **Open**, or:
-
-```sh
-xattr -dr com.apple.quarantine "/Applications/Playdock.app"
-```
-
-## Requirements
-
-Sikarugir Creator needs to be installed with at least one Wine engine already downloaded
-(`~/Library/Application Support/Sikarugir/Engines/`) - that's the engine this app reuses.
 
 ## What's new
 
