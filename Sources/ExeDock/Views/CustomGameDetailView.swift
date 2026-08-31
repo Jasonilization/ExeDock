@@ -19,6 +19,7 @@ struct CustomGameDetailView: View {
     let game: CustomGame
     let isAdvancedMode: Bool
     let onClose: () -> Void
+    let onLaunch: () -> Void
 
     @LocalState private var showingSettings = false
     @LocalState private var showingEdit = false
@@ -117,7 +118,9 @@ struct CustomGameDetailView: View {
 
     private func activateFocusedAction() {
         switch availableActions[safe: focusedActionIndex] {
-        case .launch: model.launchCustomGame(game)
+        case .launch:
+            onLaunch()
+            model.launchCustomGame(game)
         case .settings: showingSettings = true
         case .reveal: model.revealInFinder(game.exePath)
         case .edit: showingEdit = true
@@ -333,6 +336,7 @@ struct CustomGameDetailView: View {
                     .controlSize(.large)
             } else {
                 Button {
+                    onLaunch()
                     model.launchCustomGame(game)
                 } label: {
                     if model.launchingTarget == .custom(game.id) {

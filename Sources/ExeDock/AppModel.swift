@@ -396,8 +396,10 @@ final class AppModel: ObservableObject {
     /// Playdock's own Default bottle for anything picked from outside every known bottle - the
     /// common case, since most manually-imported games just sit somewhere plain on disk. (Wine
     /// itself has no requirement that an exe physically live inside the prefix it runs under -
-    /// `ExeRunner` already passes an arbitrary host path straight through.)
-    private func resolvedBottle(forExePath exePath: String) -> Bottle {
+    /// `ExeRunner` already passes an arbitrary host path straight through.) Internal, not private,
+    /// so the launch overlay can show which bottle a custom game is actually about to run from -
+    /// "also where it's at," per live feedback.
+    func resolvedBottle(forExePath exePath: String) -> Bottle {
         CDriveScanner.allKnownBottles().first { exePath.hasPrefix($0.driveCPath) } ?? BottleManager.shared.defaultBottle
     }
 }

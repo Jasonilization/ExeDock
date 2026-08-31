@@ -15,6 +15,7 @@ struct CustomGameCardView: View {
     let isAdvancedMode: Bool
     let artworkHeight: CGFloat
     let isFocused: Bool
+    let onLaunch: () -> Void
     let onOpenDetail: () -> Void
 
     @LocalState private var showingSettings = false
@@ -105,6 +106,7 @@ struct CustomGameCardView: View {
             }
             if runningInfo == nil, !isMissing {
                 Button {
+                    onLaunch()
                     model.launchCustomGame(game)
                 } label: {
                     Label("Launch", systemImage: "play.fill")
