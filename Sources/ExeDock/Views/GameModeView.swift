@@ -150,14 +150,22 @@ struct GameModeView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
                             searchBar
+                            // The GeometryReader sits on `gamesGrid` itself, inside the padding -
+                            // not the outer, still-padded VStack - so `gridWidth` measures the
+                            // grid's own true available width exactly, with nothing to subtract or
+                            // guess at. Measuring the padded container instead (an earlier version
+                            // of this) reported a value ~48pt wider than what the grid actually had
+                            // to lay columns out in, so a clamped column could still overflow its
+                            // real space by that same 48pt - the real cause of cards still
+                            // overlapping/clipping at some sizes despite being "clamped."
                             gamesGrid
+                                .background(
+                                    GeometryReader { geometry in
+                                        Color.clear.preference(key: GridWidthKey.self, value: geometry.size.width)
+                                    }
+                                )
                         }
                         .padding(24)
-                        .background(
-                            GeometryReader { geometry in
-                                Color.clear.preference(key: GridWidthKey.self, value: geometry.size.width)
-                            }
-                        )
                     }
                     .onPreferenceChange(GridWidthKey.self) { gridWidth = $0 }
                     .onChange(of: focusedTarget) { target in
@@ -939,14 +947,14 @@ struct GameDetailView: View {
                     }
                     .padding(32)
                     // The double .frame() is deliberate, not redundant: the first caps the content
-                    // column's own width so it stays readable at 1200pt; the second then re-expands
+                    // column's own width so it stays readable at 1320pt; the second then re-expands
                     // that capped block to fill whatever width the ScrollView actually has and
                     // re-applies leading alignment *within* that full width. A single
-                    // `.frame(maxWidth: 1200, alignment: .leading)` only caps the view's own size -
+                    // `.frame(maxWidth: 1320, alignment: .leading)` only caps the view's own size -
                     // it doesn't reliably left-anchor it against a wider ancestor, which is exactly
                     // what put this content off-screen entirely: confirmed live, content rendering
                     // well past the left edge of the window with no way to reach the close button.
-                    .frame(maxWidth: 1200, alignment: .leading)
+                    .frame(maxWidth: 1320, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .clipped()
@@ -1075,21 +1083,21 @@ struct GameDetailView: View {
     /// A fixed-width column of photos to the right of the text - "pictures should be at the
     /// RIGHT," per live feedback, after a prior full-width row layout still didn't land right.
     /// Two thumbnails per row (rather than one) so it's still "rows... without scrolling" rather
-    /// than one long single-file column - sized noticeably bigger than the original pass per "make
-    /// the media pictures bigger for better viewing," with the content column widened to match so
-    /// the text side doesn't get squeezed. Each thumbnail gets both its width *and* height fixed in
-    /// one `.frame()` call before `.fill` crops it, so every photo renders at exactly the same size
-    /// no matter its own screenshot's native aspect ratio. Tap one to open the *complete*,
-    /// uncropped image via `imageLightbox` - "images are expandable for the more detail pictures."
+    /// than one long single-file column - sized up twice now per repeated "make the media pictures
+    /// bigger" feedback, with the content column widened to match so the text side doesn't get
+    /// squeezed. Each thumbnail gets both its width *and* height fixed in one `.frame()` call
+    /// before `.fill` crops it, so every photo renders at exactly the same size no matter its own
+    /// screenshot's native aspect ratio. Tap one to open the *complete*, uncropped image via
+    /// `imageLightbox` - "images are expandable for the more detail pictures."
     private var photoGrid: some View {
         let rows = allPhotoPaths.chunked(into: 2)
         return VStack(alignment: .leading, spacing: 12) {
             Text("Media")
                 .font(.headline)
                 .foregroundStyle(.white)
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 20) {
                 ForEach(rows.indices, id: \.self) { rowIndex in
-                    HStack(spacing: 16) {
+                    HStack(spacing: 20) {
                         ForEach(rows[rowIndex], id: \.self) { path in
                             photoThumbnail(path)
                         }
@@ -1097,7 +1105,7 @@ struct GameDetailView: View {
                 }
             }
         }
-        .frame(width: 440, alignment: .leading)
+        .frame(width: 560, alignment: .leading)
     }
 
     private func photoThumbnail(_ path: String) -> some View {
@@ -1106,7 +1114,7 @@ struct GameDetailView: View {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 212, height: 124)
+                    .frame(width: 270, height: 155)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(RoundedRectangle(cornerRadius: 10))
                     .onTapGesture { expandedImagePath = path }
