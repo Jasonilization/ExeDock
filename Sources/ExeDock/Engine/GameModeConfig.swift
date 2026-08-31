@@ -12,6 +12,15 @@ struct GameModeConfig: Equatable, Codable, Hashable {
     var wineMSync = true
     var engineName: String? = SikarugirEngine.recommendedEngineName()
 
+    /// ESYNC and MSYNC are two different sync-primitive backends, but nobody's ever asked to toggle
+    /// them independently - "only have 5 toggles" collapses them into one "Fast Sync" switch in the
+    /// UI while keeping both fields (and both env vars) underneath, so nothing about a saved config
+    /// or `environment` changes shape.
+    var fastSync: Bool {
+        get { wineESync && wineMSync }
+        set { wineESync = newValue; wineMSync = newValue }
+    }
+
     var environment: [String: String] {
         [
             "D3DMETAL": d3dMetal ? "1" : "0",
