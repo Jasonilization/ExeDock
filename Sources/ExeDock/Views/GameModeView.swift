@@ -24,6 +24,8 @@ struct GameModeView: View {
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     @ObservedObject private var controllerObserver = ControllerObserver.shared
     @AppStorage("com.exedock.advancedMode") private var isAdvancedMode = false
+    @AppStorage(LibraryLayoutStyle.storageKey) private var libraryLayoutRaw = LibraryLayoutStyle.grid.rawValue
+    private var libraryLayout: LibraryLayoutStyle { LibraryLayoutStyle(rawValue: libraryLayoutRaw) ?? .grid }
     @LocalState private var search = ""
     @LocalState private var showingSettingsSheet = false
     @LocalState private var showingAddGameSheet = false
@@ -160,27 +162,36 @@ struct GameModeView: View {
                 // same reason: it's the far more standard, battle-tested way to communicate a
                 // descendant's measured size back up a SwiftUI view tree. "library cards still
                 // overlap," repeated live feedback across several fixes at this same spot.
-                GeometryReader { geometry in
-                    ScrollViewReader { scrollProxy in
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 20) {
-                                searchBar
-                                gamesGrid
+                if libraryLayout == .grid {
+                    GeometryReader { geometry in
+                        ScrollViewReader { scrollProxy in
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: 20) {
+                                    searchBar
+                                    gamesGrid
+                                }
+                                .padding(24)
                             }
-                            .padding(24)
+                            .onChange(of: focusedTarget) { target in
+                                guard case .card(let index) = target, libraryEntries.indices.contains(index) else { return }
+                                withAnimation { scrollProxy.scrollTo(libraryEntries[index].id, anchor: .center) }
+                            }
                         }
-                        .onChange(of: focusedTarget) { target in
-                            guard case .card(let index) = target, libraryEntries.indices.contains(index) else { return }
-                            withAnimation { scrollProxy.scrollTo(libraryEntries[index].id, anchor: .center) }
-                        }
+                        // 48 = the VStack's own .padding(24) on each side, which sits between this
+                        // measurement and the grid it's actually sizing for.
+                        .background(
+                            Color.clear.preference(key: GridWidthKey.self, value: max(0, geometry.size.width - 48))
+                        )
                     }
-                    // 48 = the VStack's own .padding(24) on each side, which sits between this
-                    // measurement and the grid it's actually sizing for.
-                    .background(
-                        Color.clear.preference(key: GridWidthKey.self, value: max(0, geometry.size.width - 48))
-                    )
+                    .onPreferenceChange(GridWidthKey.self) { gridWidth = $0 }
+                } else {
+                    // Every non-grid layout is a genuinely different structure - some own their
+                    // own sidebar/scrolling entirely (Sidebar, Steam-style), so they render full-
+                    // bleed here rather than being squeezed into the grid's own padded ScrollView
+                    // wrapper. "Search actual game design... maybe just dont have cards," per live
+                    // feedback - these are real, distinct navigation models, not the grid reskinned.
+                    alternateLayout
                 }
-                .onPreferenceChange(GridWidthKey.self) { gridWidth = $0 }
             }
 
             steamFloatingIcon
@@ -243,6 +254,7 @@ struct GameModeView: View {
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: detailCustomGame?.id)
         .animation(.easeInOut(duration: 0.4), value: themedGame?.appID)
         .animation(.easeInOut(duration: 0.25), value: showingControllerMode)
+        .skinned()
         .sheet(isPresented: $showingSettingsSheet) {
             DefaultSettingsSheet(isAdvancedMode: $isAdvancedMode)
         }
@@ -663,6 +675,29 @@ struct GameModeView: View {
             // its own column count/width changes, and this grid's own sizing changes often (every
             // resize, every count-driven tier change), so an implicit animation on it means near-
             // constant transitions with real potential to visibly overlap mid-flight.
+        }
+    }
+
+    /// Routes to whichever real, structurally distinct layout is picked in Settings - all of them
+    /// share the same `libraryEntries` (so search/sort still apply) and the same "open detail" path
+    /// the grid's own cards already use, so the actual game data, launch flow, and detail view are
+    /// identical no matter which structure is on screen; only how entries are arranged differs.
+    @ViewBuilder
+    private var alternateLayout: some View {
+        let openDetail: (LibraryEntry) -> Void = { entry in
+            switch entry {
+            case .steam(let game): detailGame = game
+            case .custom(let game): detailCustomGame = game
+            }
+        }
+        switch libraryLayout {
+        case .grid: EmptyView() // unreachable - handled above
+        case .shelves: LibraryShelvesLayout(entries: libraryEntries, onOpenDetail: openDetail)
+        case .sidebar: LibrarySidebarLayout(entries: libraryEntries, onOpenDetail: openDetail)
+        case .list: LibraryListLayout(entries: libraryEntries, onOpenDetail: openDetail)
+        case .steam: LibrarySteamStyleLayout(entries: libraryEntries, onOpenDetail: openDetail)
+        case .carousel: LibraryCarouselLayout(entries: libraryEntries, onOpenDetail: openDetail)
+        case .launchpad: LibraryLaunchpadLayout(entries: libraryEntries, onOpenDetail: openDetail)
         }
     }
 
@@ -1574,6 +1609,8 @@ private struct DefaultSettingsSheet: View {
     @ObservedObject private var controllerObserver = ControllerObserver.shared
     @Binding var isAdvancedMode: Bool
     @LocalState private var focusedRow: SettingsRow?
+    @AppStorage(LibraryLayoutStyle.storageKey) private var libraryLayoutRaw = LibraryLayoutStyle.grid.rawValue
+    @AppStorage(PlaydockSkin.storageKey) private var skinRaw = PlaydockSkin.luxury.rawValue
 
     private func isFocused(_ row: SettingsRow) -> Bool {
         controllerObserver.isConnected && focusedRow == row
@@ -1597,6 +1634,25 @@ private struct DefaultSettingsSheet: View {
                         .focusRing(isFocused(.advancedMode))
                 } footer: {
                     Text("Adds a settings button to each game so you can fine-tune its engine and graphics settings individually. Most people never need this.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
+                    Picker("Layout", selection: $libraryLayoutRaw) {
+                        ForEach(LibraryLayoutStyle.allCases) { style in
+                            Text(style.displayName).tag(style.rawValue)
+                        }
+                    }
+                    Picker("Appearance", selection: $skinRaw) {
+                        ForEach(PlaydockSkin.allCases) { skin in
+                            Text(skin.displayName).tag(skin.rawValue)
+                        }
+                    }
+                } header: {
+                    Text("Library Look")
+                } footer: {
+                    Text((LibraryLayoutStyle(rawValue: libraryLayoutRaw) ?? .grid).subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1661,7 +1717,7 @@ private struct DefaultSettingsSheet: View {
             }
             .formStyle(.grouped)
         }
-        .frame(width: 420, height: isAdvancedMode ? 620 : 380)
+        .frame(width: 420, height: isAdvancedMode ? 680 : 460)
         .animation(.easeInOut(duration: 0.2), value: isAdvancedMode)
     }
 }
