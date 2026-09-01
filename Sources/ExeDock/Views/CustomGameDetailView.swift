@@ -132,9 +132,12 @@ struct CustomGameDetailView: View {
         Button {
             onClose()
         } label: {
-            Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 28))
-                .foregroundStyle(.white, .black.opacity(0.4))
+            Image(systemName: "xmark")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(.black.opacity(0.55), in: Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(0.25)))
         }
         .buttonStyle(.plain)
         .padding(24)

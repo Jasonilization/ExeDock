@@ -1084,9 +1084,16 @@ struct GameDetailView: View {
         Button {
             onClose()
         } label: {
-            Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 28))
-                .foregroundStyle(.white, .black.opacity(0.4))
+            Image(systemName: "xmark")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                // A real solid backing, not just the SF Symbol's own faint built-in shadow layer -
+                // busy, high-contrast game art (bright whites, bold text baked into the artwork
+                // itself) can wash the old icon-only close button out almost completely. "Stuck" in
+                // a detail view with no visible way out, per live feedback.
+                .background(.black.opacity(0.55), in: Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(0.25)))
         }
         .buttonStyle(.plain)
         .padding(24)
