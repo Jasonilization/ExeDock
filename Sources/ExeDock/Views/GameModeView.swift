@@ -734,8 +734,8 @@ private struct GameCardView: View {
                         .lineLimit(2)
                 }
                 detailsRow
-                if let runningInfo {
-                    runningBadge(runningInfo)
+                if runningInfo != nil {
+                    RunningBadge()
                 } else {
                     openDetailHint
                 }
@@ -853,29 +853,6 @@ private struct GameCardView: View {
     private var engineBadgeText: String {
         let config = model.config(for: game)
         return config.d3dMetal ? "D3DMetal" : (config.dxvk ? "DXVK" : (config.dxmt ? "DXMT" : "Default"))
-    }
-
-    /// Replaces the Launch button while `RunningGameTracker` sees this game's process - a
-    /// minute-granularity elapsed time (no need for per-second ticking on a "how long has this been
-    /// running" label), ticked by `TimelineView` rather than a manually managed Timer.
-    private func runningBadge(_ info: RunningProcessInfo) -> some View {
-        TimelineView(.periodic(from: info.startedAt, by: 60)) { context in
-            HStack(spacing: 8) {
-                Circle().fill(.green).frame(width: 8, height: 8)
-                Text("Running \(elapsedString(from: info.startedAt, to: context.date))")
-                    .font(.callout.weight(.medium))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
-        }
-    }
-
-    private func elapsedString(from start: Date, to now: Date) -> String {
-        let minutes = max(0, Int(now.timeIntervalSince(start) / 60))
-        let hours = minutes / 60
-        let remainder = minutes % 60
-        return hours > 0 ? "\(hours)h \(remainder)m" : "\(remainder)m"
     }
 
     /// Replaces the old inline Launch button - launching now only happens from the full Game Detail
@@ -1264,8 +1241,8 @@ struct GameDetailView: View {
 
     private var actionRow: some View {
         HStack(spacing: 12) {
-            if let runningInfo {
-                runningBadge(runningInfo)
+            if runningInfo != nil {
+                RunningBadge(compact: true)
             } else {
                 Button {
                     onLaunch()
@@ -1316,27 +1293,6 @@ struct GameDetailView: View {
             .focusRing(isFocused(.storePage))
         }
         .padding(.top, 8)
-    }
-
-    private func runningBadge(_ info: RunningProcessInfo) -> some View {
-        TimelineView(.periodic(from: info.startedAt, by: 60)) { context in
-            HStack(spacing: 8) {
-                Circle().fill(.green).frame(width: 8, height: 8)
-                Text("Running \(elapsedString(from: info.startedAt, to: context.date))")
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.white)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-        }
-    }
-
-    private func elapsedString(from start: Date, to now: Date) -> String {
-        let minutes = max(0, Int(now.timeIntervalSince(start) / 60))
-        let hours = minutes / 60
-        let remainder = minutes % 60
-        return hours > 0 ? "\(hours)h \(remainder)m" : "\(remainder)m"
     }
 
     private var installFolderPath: String { game.installFolderPath }

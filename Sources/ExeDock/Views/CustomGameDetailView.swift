@@ -325,8 +325,8 @@ struct CustomGameDetailView: View {
 
     private var actionRow: some View {
         HStack(spacing: 12) {
-            if let runningInfo {
-                runningBadge(runningInfo)
+            if runningInfo != nil {
+                RunningBadge(compact: true)
             } else if isMissing {
                 Button("Locate Game") { locateGame() }
                     .buttonStyle(.big)
@@ -386,27 +386,6 @@ struct CustomGameDetailView: View {
             .focusRing(isFocused(.edit))
         }
         .padding(.top, 8)
-    }
-
-    private func runningBadge(_ info: RunningProcessInfo) -> some View {
-        TimelineView(.periodic(from: info.startedAt, by: 60)) { context in
-            HStack(spacing: 8) {
-                Circle().fill(.green).frame(width: 8, height: 8)
-                Text("Running \(elapsedString(from: info.startedAt, to: context.date))")
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.white)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-        }
-    }
-
-    private func elapsedString(from start: Date, to now: Date) -> String {
-        let minutes = max(0, Int(now.timeIntervalSince(start) / 60))
-        let hours = minutes / 60
-        let remainder = minutes % 60
-        return hours > 0 ? "\(hours)h \(remainder)m" : "\(remainder)m"
     }
 
     private func locateGame() {
