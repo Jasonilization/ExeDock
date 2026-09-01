@@ -6,7 +6,7 @@ enum ExeRunner {
     static let logsDir = ("~/Library/Logs/ExeDock" as NSString).expandingTildeInPath
 
     /// `preferWrapperEngine`, when true and the target bottle isn't already a wrapper bottle (that
-    /// case always uses that wrapper's own launcher, below), runs the exe with a real Sikarugir
+    /// case always tries that wrapper's own launcher first, below), runs the exe with a real Sikarugir
     /// wrapper app's own bundled wine binary (see `SikarugirEngine.anyWrapperEngine`) instead of
     /// ExeDock's own separately-downloaded engine - still against `bottle`'s own prefix, just with a
     /// different engine reading it. Custom games use this - "just not use playdock's engine but
@@ -14,6 +14,10 @@ enum ExeRunner {
     /// ExeDock's own engine if no Sikarugir wrapper app is actually installed to borrow one from.
     @discardableResult
     static func run(exePath: String, in bottle: Bottle, arguments: [String] = [], config: GameModeConfig = GameModeConfig(), engineName: String? = nil, preferWrapperEngine: Bool = false) async throws -> Process? {
+        try? FileManager.default.createDirectory(atPath: logsDir, withIntermediateDirectories: true)
+        let timestamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let baseName = (exePath as NSString).lastPathComponent
+
         // A game living inside a *specific* Sikarugir wrapper's own bottle is launched through that
         // wrapper's own launcher binary (Contents/MacOS/Sikarugir - the same binary its
         // CFBundleExecutable points at, just invoked directly instead of through Finder/
@@ -31,28 +35,49 @@ enum ExeRunner {
         // for what game launched" actually requires - not just opening the app and hoping.
         if case .sikarugirWrapper(let appPath) = bottle.kind {
             let launcherBinary = appPath + "/Contents/MacOS/Sikarugir"
-            guard FileManager.default.isExecutableFile(atPath: launcherBinary) else {
-                // Its own launcher isn't where expected - opening the app is still better than a
-                // hard failure, even though it can't target the right exe this way.
+            if FileManager.default.isExecutableFile(atPath: launcherBinary) {
+                let logPath = (logsDir as NSString).appendingPathComponent("\(baseName)-\(timestamp).log")
+                FileManager.default.createFile(atPath: logPath, contents: nil)
+                let logHandle = FileHandle(forWritingAtPath: logPath)
+
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: launcherBinary)
+                process.arguments = ["run", exePath] + arguments
+                process.currentDirectoryURL = URL(fileURLWithPath: (exePath as NSString).deletingLastPathComponent)
+                process.standardOutput = logHandle
+                process.standardError = logHandle
+                try process.run()
+
+                // The wrapper's own CLI is the normal, preferred path here - but it's been observed
+                // failing fast (exits within ~1s, a short log ending in
+                // "SikarugirSdk.WineAppInitializationError") for reasons that don't reproduce from
+                // outside it even against a known-good, already-initialized prefix. A short grace
+                // period distinguishes that from a real game just taking a moment to start: if the
+                // process is already gone with a non-zero status, don't strand the player on a
+                // launch that silently did nothing - fall through and run the exe directly instead,
+                // against this exact same wrapper's own prefix, borrowing its own wine binary (the
+                // identical mechanism `preferWrapperEngine` already uses below for a borrowed
+                // wrapper engine).
+                try? await Task.sleep(for: .seconds(2))
+                if process.isRunning || process.terminationStatus == 0 {
+                    return process
+                }
+                DiagnosticsLog.log("Sikarugir wrapper CLI exited fast for \(baseName) (status \(process.terminationStatus)) - falling back to a direct launch against \(appPath).")
+            }
+
+            let wrapperWine = appPath + "/Contents/SharedSupport/wine/bin/wine"
+            guard FileManager.default.isExecutableFile(atPath: wrapperWine) else {
+                // Neither the launcher CLI nor a direct wine binary is where expected - opening the
+                // app is still better than a hard failure, even though it can't target the right
+                // exe this way.
                 try await NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: appPath), configuration: NSWorkspace.OpenConfiguration())
                 return nil
             }
-
-            try? FileManager.default.createDirectory(atPath: logsDir, withIntermediateDirectories: true)
-            let timestamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-            let baseName = (exePath as NSString).lastPathComponent
-            let logPath = (logsDir as NSString).appendingPathComponent("\(baseName)-\(timestamp).log")
-            FileManager.default.createFile(atPath: logPath, contents: nil)
-            let logHandle = FileHandle(forWritingAtPath: logPath)
-
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: launcherBinary)
-            process.arguments = ["run", exePath] + arguments
-            process.currentDirectoryURL = URL(fileURLWithPath: (exePath as NSString).deletingLastPathComponent)
-            process.standardOutput = logHandle
-            process.standardError = logHandle
-            try process.run()
-            return process
+            let libraryPath = "\(appPath)/Contents/Frameworks:\(appPath)/Contents/SharedSupport/wine/lib"
+            return try runDirect(
+                exePath: exePath, bottle: bottle, arguments: arguments, config: config,
+                wineBinary: wrapperWine, libraryPath: libraryPath, baseName: baseName, timestamp: timestamp
+            )
         }
 
         let wrapperEngine = preferWrapperEngine ? SikarugirEngine.anyWrapperEngine() : nil
@@ -60,11 +85,26 @@ enum ExeRunner {
         if !bottle.isReadOnly {
             try BottleManager.shared.ensureInitialized(bottle, wineBinary: wineBinary)
         }
+        let libraryPath: String
+        if let wrapperEngine {
+            // Must be paired with the *same* app's own lib/Frameworks - mixing a wrapper's wine
+            // binary with ExeDock's own downloaded engine's shared libraries risks a broken,
+            // version-mismatched mix.
+            libraryPath = "\(wrapperEngine.frameworksDir):\(wrapperEngine.libDir)"
+        } else {
+            libraryPath = try SikarugirEngine.runtimeEnvironment(engineName: engineName ?? config.engineName)["DYLD_FALLBACK_LIBRARY_PATH"] ?? ""
+        }
+        return try runDirect(
+            exePath: exePath, bottle: bottle, arguments: arguments, config: config,
+            wineBinary: wineBinary, libraryPath: libraryPath, baseName: baseName, timestamp: timestamp
+        )
+    }
 
-        try? FileManager.default.createDirectory(atPath: logsDir, withIntermediateDirectories: true)
-        let timestamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        let baseName = (exePath as NSString).lastPathComponent
-        let logPath = (logsDir as NSString).appendingPathComponent("\(baseName)-\(timestamp).log")
+    /// Runs an exe by invoking wine directly (no Sikarugir wrapper CLI involved) - shared by
+    /// Playdock's own bottles, borrowed-wrapper-engine custom game launches, and now the
+    /// fast-fail fallback for a wrapper bottle whose own CLI didn't come up.
+    private static func runDirect(exePath: String, bottle: Bottle, arguments: [String], config: GameModeConfig, wineBinary: String, libraryPath: String, baseName: String, timestamp: String) throws -> Process {
+        let logPath = (logsDir as NSString).appendingPathComponent("\(baseName)-\(timestamp)-direct.log")
         FileManager.default.createFile(atPath: logPath, contents: nil)
         let logHandle = FileHandle(forWritingAtPath: logPath)
 
@@ -80,13 +120,8 @@ enum ExeRunner {
         process.currentDirectoryURL = URL(fileURLWithPath: (exePath as NSString).deletingLastPathComponent)
         var env = ProcessInfo.processInfo.environment
         env["WINEPREFIX"] = bottle.prefixPath
-        if let wrapperEngine {
-            // Must be paired with the *same* app's own lib/Frameworks - mixing a wrapper's wine
-            // binary with ExeDock's own downloaded engine's shared libraries risks a broken,
-            // version-mismatched mix.
-            env["DYLD_FALLBACK_LIBRARY_PATH"] = "\(wrapperEngine.frameworksDir):\(wrapperEngine.libDir)"
-        } else {
-            for (key, value) in try SikarugirEngine.runtimeEnvironment(engineName: engineName ?? config.engineName) { env[key] = value }
+        if !libraryPath.isEmpty {
+            env["DYLD_FALLBACK_LIBRARY_PATH"] = libraryPath
         }
         for (key, value) in config.environment { env[key] = value }
         process.environment = env

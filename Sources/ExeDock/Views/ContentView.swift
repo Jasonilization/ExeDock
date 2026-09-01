@@ -69,7 +69,12 @@ struct ContentView: View {
             Image(systemName: "textformat.size.smaller")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Slider(value: $uiScale, in: 0.75...1.5, step: 0.05)
+            // "5 notches, confirmed no overlap" - plain SwiftUI `Slider` never draws tick marks at
+            // all (a `step:` just changes how far a drag jumps, nothing visible), so this wraps the
+            // real, native `NSSlider` tick rendering instead, snapped to exactly 5 stops across the
+            // same 0.75-1.5 range this always had - AppKit lays its own ticks out, so there's no
+            // hand-placed overlay geometry here to ever misalign or overlap.
+            FiveStopSlider(value: $uiScale)
                 .frame(width: 130)
             Image(systemName: "textformat.size.larger")
                 .font(.caption)
@@ -254,6 +259,43 @@ struct ContentView: View {
         panel.canChooseDirectories = false
         if panel.runModal() == .OK, let url = panel.url {
             model.runDroppedFile(at: url.path)
+        }
+    }
+}
+
+/// A real `NSSlider` with 5 visible tick marks, snapped so a drag can only ever land on one of
+/// them - "5 toggles/notches, confirmed no overlap" for the UI Size control. Plain SwiftUI
+/// `Slider` has no tick-mark rendering at all, so this is a thin `NSViewRepresentable` instead of
+/// a hand-drawn overlay - AppKit places its own 5 marks evenly across the track, so there's no
+/// custom geometry here that could ever misalign or overlap the thumb/track.
+private struct FiveStopSlider: NSViewRepresentable {
+    @Binding var value: Double
+
+    static let minValue = 0.75
+    static let maxValue = 1.5
+
+    func makeNSView(context: Context) -> NSSlider {
+        let slider = NSSlider(value: value, minValue: Self.minValue, maxValue: Self.maxValue, target: context.coordinator, action: #selector(Coordinator.valueChanged(_:)))
+        slider.numberOfTickMarks = 5
+        slider.allowsTickMarkValuesOnly = true
+        slider.tickMarkPosition = .below
+        return slider
+    }
+
+    func updateNSView(_ nsView: NSSlider, context: Context) {
+        if nsView.doubleValue != value {
+            nsView.doubleValue = value
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject {
+        let parent: FiveStopSlider
+        init(_ parent: FiveStopSlider) { self.parent = parent }
+
+        @objc func valueChanged(_ sender: NSSlider) {
+            parent.value = sender.doubleValue
         }
     }
 }
