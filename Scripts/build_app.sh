@@ -35,6 +35,10 @@ else
     echo "iconutil not found, skipping icon"
 fi
 
+echo "==> Copying skin fonts"
+mkdir -p "$APP_BUNDLE/Contents/Resources/Fonts"
+cp Sources/ExeDock/Resources/Fonts/*.ttf "$APP_BUNDLE/Contents/Resources/Fonts/"
+
 echo "==> Codesigning"
 IDENTITY="Apple Development: thecleanestaccount@icloud.com (RUC8R3W68Y)"
 if security find-identity -v -p codesigning | grep -q "$IDENTITY"; then

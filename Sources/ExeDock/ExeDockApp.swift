@@ -1,7 +1,12 @@
 import SwiftUI
+import CoreText
 
 @main
 struct ExeDockApp: App {
+    init() {
+        SkinFonts.registerBundledFonts()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()

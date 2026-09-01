@@ -34,9 +34,7 @@ struct CustomGameCardView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 4) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(game.effectiveName)
-                            .font(.title2.weight(.semibold))
-                            .lineLimit(1)
+                        SkinTitleText(text: game.effectiveName, size: 20)
                         Text("Custom Game")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.white)
