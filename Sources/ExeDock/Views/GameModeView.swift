@@ -351,6 +351,10 @@ struct GameModeView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        // A subtle material behind the toolbar row - the top of a real surface stack (toolbar
+        // above the grid, grid above the backdrop) instead of sitting flush/transparent against
+        // whatever's behind it, so it reads as its own distinct layer even over a themed backdrop.
+        .background(.bar)
     }
 
     /// A soft rounded-square, icon-only button - used for the header's secondary actions
@@ -447,7 +451,7 @@ struct GameModeView: View {
 
     private var searchBar: some View {
         HStack(spacing: 12) {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Search your games", text: $search)
                     .textFieldStyle(.plain)
@@ -462,8 +466,13 @@ struct GameModeView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(10)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: Playdock.Radius.control, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Playdock.Radius.control, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06))
+            )
 
             Picker("Sort", selection: $sortOption) {
                 ForEach(GameSortOption.allCases) { option in
@@ -486,7 +495,7 @@ struct GameModeView: View {
         }
     }
 
-    private static let gridSpacing: CGFloat = 20
+    private static let gridSpacing: CGFloat = Playdock.Spacing.grid
 
     /// The grid's own column layout, back to plain `.adaptive(minimum:maximum:)` - SwiftUI works
     /// out how many columns actually fit *natively*, using the grid's own real proposed width
@@ -594,7 +603,7 @@ struct GameModeView: View {
         if model.isLoadingSteamGames && model.steamGames.isEmpty && model.customGames.isEmpty {
             // Shimmering placeholders in the exact grid the real cards will land in - reads as a
             // proper dashboard loading in, not just "something, somewhere, is thinking."
-            LazyVGrid(columns: gridColumns, spacing: 20) {
+            LazyVGrid(columns: gridColumns, spacing: Self.gridSpacing) {
                 ForEach(0..<6, id: \.self) { _ in GameCardSkeleton().frame(maxWidth: idealCardSizeTier.maxWidth) }
             }
         } else if model.steamGames.isEmpty && model.customGames.isEmpty {
@@ -606,7 +615,7 @@ struct GameModeView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 40)
         } else {
-            LazyVGrid(columns: gridColumns, spacing: 20) {
+            LazyVGrid(columns: gridColumns, spacing: Self.gridSpacing) {
                 ForEach(Array(libraryEntries.enumerated()), id: \.element.id) { index, entry in
                     let isFocused = controllerObserver.isConnected && focusedTarget == .card(index)
                     switch entry {
@@ -687,6 +696,7 @@ private struct GameCardView: View {
     @LocalState private var storeInfo: SteamStoreInfo?
     @LocalState private var showingSettings = false
     @LocalState private var isHoveringArtwork = false
+    @LocalState private var isHoveringCard = false
 
     private var hasCustomSettings: Bool { model.perGameConfigs[game.appID] != nil }
     private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.appID] }
@@ -732,8 +742,7 @@ private struct GameCardView: View {
             }
             .padding(20)
         }
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.quaternary))
+        .cardSurface(isHovering: isHoveringCard)
         .focusRing(isFocused)
         // Tapping the card opens the full Game Detail view rather than launching straight away -
         // "it should go into full screen before you can launch," per live feedback, so the grid
@@ -742,7 +751,7 @@ private struct GameCardView: View {
         // own bounds to that button first) - this is a different situation from the earlier
         // Steam-tile bug, which was specifically a *simultaneous* zero-distance DragGesture
         // competing with a double-tap recognizer on the very same view.
-        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .contentShape(RoundedRectangle(cornerRadius: Playdock.Radius.card))
         .onTapGesture { onOpenDetail() }
         .contextMenu {
             Button {
@@ -784,6 +793,7 @@ private struct GameCardView: View {
             storeInfo = await SteamStoreInfoCache.shared.info(for: game.metadataAppID)
         }
         .onHover { isHovering in
+            isHoveringCard = isHovering
             if isHovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
         }
     }
@@ -1986,8 +1996,7 @@ private struct GameCardSkeleton: View {
             }
             .padding(16)
         }
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.quaternary))
+        .cardSurface()
         .onAppear {
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                 isShimmering = true
