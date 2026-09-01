@@ -21,6 +21,7 @@ struct CustomGameCardView: View {
     @LocalState private var showingSettings = false
     @LocalState private var showingEdit = false
     @LocalState private var isHoveringArtwork = false
+    @LocalState private var isHoveringCard = false
     @LocalState private var isMoving = false
 
     private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.id] }
@@ -90,13 +91,12 @@ struct CustomGameCardView: View {
             }
             .padding(20)
         }
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.quaternary))
+        .cardSurface(isHovering: isHoveringCard)
         .focusRing(isFocused)
         // Tapping the card opens the full detail view rather than launching straight away - same
         // pattern as GameCardView, for the same reason (see that view's own comment on why a plain
         // single-tap gesture here is safe alongside the nested gearshape Button).
-        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .contentShape(RoundedRectangle(cornerRadius: Playdock.Radius.card))
         .onTapGesture { onOpenDetail() }
         .contextMenu {
             Button {
@@ -154,6 +154,7 @@ struct CustomGameCardView: View {
             EditCustomGameSheet(game: game)
         }
         .onHover { isHovering in
+            isHoveringCard = isHovering
             if isHovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
         }
     }
