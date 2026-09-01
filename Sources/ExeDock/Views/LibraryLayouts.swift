@@ -62,7 +62,7 @@ private struct LibraryEntryTile: View {
             ZStack(alignment: .topLeading) {
                 artView(path: presentation?.artPath, id: entry.id)
                     .frame(width: width, height: height)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .tileSurface()
                 if presentation?.isCustom == true {
                     Text("CUSTOM").font(.system(size: 9, weight: .bold)).padding(4).background(.purple, in: Capsule()).foregroundStyle(.white).padding(6)
                 }
@@ -96,8 +96,8 @@ struct LibraryShelvesLayout: View {
             VStack(alignment: .leading, spacing: 0) {
                 if let featured {
                     ZStack(alignment: .bottomLeading) {
-                        artView(path: featuredPresentation?.artPath, id: featured.id).frame(height: 300)
-                        LinearGradient(colors: [.clear, .black.opacity(0.78)], startPoint: .top, endPoint: .bottom).frame(height: 300)
+                        artView(path: featuredPresentation?.artPath, id: featured.id).frame(maxWidth: .infinity).frame(height: 300).clipped()
+                        LinearGradient(colors: [.clear, .black.opacity(0.78)], startPoint: .top, endPoint: .bottom).frame(maxWidth: .infinity, maxHeight: 300)
                         VStack(alignment: .leading, spacing: 8) {
                             Text(runningTracker.runningGames[featured.id] != nil ? "CONTINUE PLAYING" : "FEATURED")
                                 .font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.75))
@@ -147,21 +147,33 @@ struct LibrarySidebarLayout: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            List(entries, selection: Binding(get: { selectedID ?? entries.first?.id }, set: { selectedID = $0 })) { entry in
-                HStack(spacing: 10) {
-                    Circle().fill(placeholderTile(for: entry.id)).frame(width: 26, height: 26)
-                    Text(entry.name).lineLimit(1)
-                    Spacer()
-                    if runningTracker.runningGames[entry.id] != nil { Circle().fill(.green).frame(width: 7, height: 7) }
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    ForEach(entries) { entry in
+                        let isSelected = entry.id == (selectedID ?? entries.first?.id)
+                        HStack(spacing: 10) {
+                            Circle().fill(placeholderTile(for: entry.id)).frame(width: 26, height: 26)
+                            Text(entry.name).lineLimit(1).fontWeight(isSelected ? .semibold : .regular)
+                            Spacer()
+                            if runningTracker.runningGames[entry.id] != nil { Circle().fill(.green).frame(width: 7, height: 7) }
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(isSelected ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 7))
+                        .padding(.horizontal, 8)
+                        .contentShape(Rectangle())
+                        .onTapGesture { selectedID = entry.id }
+                    }
                 }
-                .tag(entry.id)
+                .padding(.vertical, 8)
             }
-            .listStyle(.sidebar)
+            .background(.regularMaterial)
             .frame(width: 260)
 
             if let selected {
                 ZStack(alignment: .bottomLeading) {
                     artView(path: presentation?.artPath, id: selected.id)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
                     LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .center, endPoint: .bottom)
                     VStack(alignment: .leading, spacing: 10) {
                         if presentation?.isCustom == true { Text("CUSTOM GAME").font(.caption.bold()).foregroundStyle(.purple) }
@@ -173,6 +185,7 @@ struct LibrarySidebarLayout: View {
                     }
                     .padding(32)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .task(id: selected.id) { presentation = await LibraryPresentation.resolve(selected) }
             } else {
                 Color.clear

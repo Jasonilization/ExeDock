@@ -118,6 +118,29 @@ private struct CardSurface: ViewModifier {
     }
 }
 
+private struct TileSurface: ViewModifier {
+    @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
+    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: skin.cardRadius, style: .continuous)
+        content
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(skin == .brutalist ? Color.primary : Color.white.opacity(0.12), lineWidth: skin.borderWidth))
+            .shadow(color: skin.hasShadow ? .black.opacity(0.25) : .clear, radius: 8, y: 4)
+    }
+}
+
+extension View {
+    /// A lighter version of `cardSurface()` for a raw art tile (the new library layouts' poster/
+    /// icon tiles) - just the skin's corner radius, border, and shadow, with no material fill
+    /// layered on top of real artwork the way a content card needs. Reads the same `PlaydockSkin`
+    /// so every layout's tiles restyle together with the grid's own cards.
+    func tileSurface() -> some View {
+        modifier(TileSurface())
+    }
+}
+
 extension View {
     /// The one shared "floating card" treatment used across the game grid - rounded, materialed,
     /// bordered, properly clipped (an unclipped `.background` shape alone lets square-cornered
