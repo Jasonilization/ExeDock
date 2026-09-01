@@ -5,8 +5,7 @@ import SwiftUI
 /// independently-tuned one-offs. Built around a real surface scale (each layer reads as sitting
 /// *on top of* the one below it, via material + border + shadow) - the same layering approach
 /// well-regarded library/dashboard apps (Steam's own library, GOG Galaxy 2.0) use to make a dense
-/// grid of cards read as separate, touchable objects rather than a flat wall of boxes. "Redesign
-/// the whole app's look... research how good this kinda UI is," per live feedback.
+/// grid of cards read as separate, touchable objects rather than a flat wall of boxes.
 enum Playdock {
     enum Radius {
         static let card: CGFloat = 20
@@ -22,17 +21,99 @@ enum Playdock {
     }
 }
 
+/// The library's "look" - an independent axis from `LibraryLayoutStyle` (its *structure*), so any
+/// layout can be paired with any skin. Each skin is a small set of real, native tokens (accent
+/// color, corner radius, and a system `Font.Design` - `.rounded`/`.serif`/`.monospaced` are real,
+/// built-in SwiftUI font variants, not custom typefaces that would need bundling) rather than 10
+/// hand-painted screens - "keep them as skins for each [layout]," per live feedback. Persisted via
+/// `@AppStorage` the same way `isAdvancedMode`/`uiScale` already are elsewhere in this app.
+enum PlaydockSkin: String, CaseIterable, Identifiable {
+    case luxury, glass, brutalist, cyber, soft, editorial, pixel, console, minimal, vapor
+    var id: String { rawValue }
+
+    static let storageKey = "com.exedock.librarySkin"
+
+    var displayName: String {
+        switch self {
+        case .luxury: return "Quiet Luxury"
+        case .glass: return "Glass"
+        case .brutalist: return "Neobrutalist"
+        case .cyber: return "Cyber Terminal"
+        case .soft: return "Soft UI"
+        case .editorial: return "Editorial"
+        case .pixel: return "Pixel Arcade"
+        case .console: return "Console Unit"
+        case .minimal: return "Minimal"
+        case .vapor: return "Vaporwave"
+        }
+    }
+
+    var accent: Color {
+        switch self {
+        case .luxury: return Color(red: 0.69, green: 0.55, blue: 0.34)
+        case .glass: return Color(red: 0.49, green: 0.36, blue: 1.0)
+        case .brutalist: return Color(red: 1.0, green: 0.30, blue: 0.42)
+        case .cyber: return Color(red: 0.0, green: 0.94, blue: 1.0)
+        case .soft: return Color(red: 0.42, green: 0.45, blue: 1.0)
+        case .editorial: return Color(red: 0.54, green: 0.43, blue: 0.23)
+        case .pixel: return Color(red: 0.96, green: 0.81, blue: 0.48)
+        case .console: return Color(red: 1.0, green: 0.48, blue: 0.10)
+        case .minimal: return Color(red: 0.04, green: 0.37, blue: 1.0)
+        case .vapor: return Color(red: 1.0, green: 0.18, blue: 0.90)
+        }
+    }
+
+    /// A card's own corner radius under this skin - brutalist/pixel go sharp, everything else
+    /// stays rounded to some degree.
+    var cardRadius: CGFloat {
+        switch self {
+        case .brutalist, .pixel: return 4
+        case .console: return 10
+        case .cyber: return 8
+        default: return Playdock.Radius.card
+        }
+    }
+
+    var fontDesign: Font.Design {
+        switch self {
+        case .brutalist, .cyber, .pixel: return .monospaced
+        case .glass, .soft, .vapor: return .rounded
+        case .editorial: return .serif
+        default: return .default
+        }
+    }
+
+    /// Skins built around a specific dark backdrop (neon-on-black, retrowave gradient) commit to
+    /// that single look rather than trying to also work as a light theme - matches the guidance
+    /// that a deliberately single-world design is a legitimate choice, not an oversight.
+    var forcesDarkSurface: Bool {
+        self == .cyber || self == .vapor
+    }
+
+    var borderWidth: CGFloat {
+        self == .brutalist ? 3 : 1
+    }
+
+    var hasShadow: Bool {
+        self != .brutalist && self != .soft
+    }
+}
+
 private struct CardSurface: ViewModifier {
     var isHovering: Bool = false
+    @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
+    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: Playdock.Radius.card, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: skin.cardRadius, style: .continuous)
         content
-            .background(.regularMaterial, in: shape)
-            .overlay(shape.strokeBorder(Color.primary.opacity(isHovering ? 0.16 : 0.08), lineWidth: 1))
+            .fontDesign(skin.fontDesign)
+            .background(skin.forcesDarkSurface ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.regularMaterial), in: shape)
+            .overlay(shape.strokeBorder(skin == .brutalist ? Color.primary : skin.accent.opacity(isHovering ? 0.5 : 0.16), lineWidth: skin.borderWidth))
             .clipShape(shape)
-            .shadow(color: .black.opacity(isHovering ? 0.30 : 0.16), radius: isHovering ? 24 : 12, y: isHovering ? 12 : 6)
-            .scaleEffect(isHovering ? 1.015 : 1)
+            .shadow(color: skin.hasShadow ? .black.opacity(isHovering ? 0.30 : 0.16) : .clear, radius: isHovering ? 24 : 12, y: isHovering ? 12 : 6)
+            .offset(x: skin == .brutalist && isHovering ? -3 : 0, y: skin == .brutalist && isHovering ? -3 : 0)
+            .scaleEffect(isHovering && skin != .brutalist ? 1.015 : 1)
             .animation(.easeOut(duration: 0.18), value: isHovering)
     }
 }
@@ -42,9 +123,61 @@ extension View {
     /// bordered, properly clipped (an unclipped `.background` shape alone lets square-cornered
     /// content like artwork visibly overflow past the rounded corners underneath it), and shadowed
     /// with a genuine lift on hover, matching real game-library card conventions instead of a flat,
-    /// borderless rectangle with no depth.
+    /// borderless rectangle with no depth. Reads the active `PlaydockSkin` itself, so every card
+    /// everywhere restyles together the instant the skin setting changes.
     func cardSurface(isHovering: Bool = false) -> some View {
         modifier(CardSurface(isHovering: isHovering))
+    }
+
+    /// Applies just the skin's accent color and font design, for non-card surfaces (headers,
+    /// buttons, layout chrome) that still need to restyle with the active skin.
+    func skinned() -> some View {
+        modifier(SkinTint())
+    }
+}
+
+private struct SkinTint: ViewModifier {
+    @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
+    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
+    func body(content: Content) -> some View {
+        content.fontDesign(skin.fontDesign).tint(skin.accent)
+    }
+}
+
+/// The library's *structure* - independent from `PlaydockSkin` (its look). Each case is a real,
+/// distinct navigation model, not a reskinned grid - researched against actual, proven app
+/// patterns before building: Steam's own current library (sidebar + tag-filtered grid), PS5/Xbox
+/// home screens (hero + horizontal shelves), Music.app (sidebar list + big detail pane), a plain
+/// dense table (Playnite's list mode), Apple TV's poster carousel, and macOS Launchpad's bare icon
+/// grid - "search actual game design... maybe just dont have cards," per live feedback.
+enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
+    case grid, shelves, sidebar, list, steam, carousel, launchpad
+    var id: String { rawValue }
+
+    static let storageKey = "com.exedock.libraryLayout"
+
+    var displayName: String {
+        switch self {
+        case .grid: return "Grid"
+        case .shelves: return "Shelves"
+        case .sidebar: return "Sidebar"
+        case .list: return "List"
+        case .steam: return "Steam-style"
+        case .carousel: return "Poster Carousel"
+        case .launchpad: return "Launchpad"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .grid: return "Cards in a grid - the default"
+        case .shelves: return "Featured hero + horizontal rows"
+        case .sidebar: return "List with a big detail pane"
+        case .list: return "Dense table, no artwork"
+        case .steam: return "Sidebar categories + poster grid"
+        case .carousel: return "One row, focus scales up"
+        case .launchpad: return "Bare icon grid"
+        }
     }
 }
 
