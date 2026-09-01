@@ -134,11 +134,25 @@ private struct CardSurface: ViewModifier {
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: skin.cardRadius, style: .continuous)
+        let offset: CGFloat = isHovering ? 11 : 7
         content
             .fontDesign(skin.fontDesign)
-            .background(skin.forcesDarkSurface ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.regularMaterial), in: shape)
-            .overlay(shape.strokeBorder(skin == .brutalist ? Color.primary : skin.accent.opacity(isHovering ? 0.5 : 0.16), lineWidth: skin.borderWidth))
+            .background(
+                skin == .glass ? AnyShapeStyle(.ultraThinMaterial)
+                    : skin.forcesDarkSurface ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.regularMaterial),
+                in: shape
+            )
+            .background(skin == .glass ? shape.fill(.white.opacity(0.06)) : nil)
+            .overlay(shape.strokeBorder(skin == .brutalist ? Color.primary : skin.accent.opacity(skin == .glass ? 0.35 : (isHovering ? 0.5 : 0.16)), lineWidth: skin.borderWidth))
             .clipShape(shape)
+            // Neobrutalist gets its own real, hard (unblurred) offset shadow - a solid-color twin
+            // shape behind the card, not `.shadow()` (which always blurs) - matching the mockup's
+            // own `box-shadow: 8px 8px 0` exactly instead of approximating it as a soft glow.
+            .background(alignment: .center) {
+                if skin == .brutalist {
+                    shape.fill(Color.primary).offset(x: offset, y: offset)
+                }
+            }
             .shadow(color: skin.hasShadow ? .black.opacity(isHovering ? 0.30 : 0.16) : .clear, radius: isHovering ? 24 : 12, y: isHovering ? 12 : 6)
             .offset(x: skin == .brutalist && isHovering ? -3 : 0, y: skin == .brutalist && isHovering ? -3 : 0)
             .scaleEffect(isHovering && skin != .brutalist ? 1.015 : 1)

@@ -26,6 +26,7 @@ struct GameModeView: View {
     @AppStorage("com.exedock.advancedMode") private var isAdvancedMode = false
     @AppStorage(LibraryLayoutStyle.storageKey) private var libraryLayoutRaw = LibraryLayoutStyle.grid.rawValue
     private var libraryLayout: LibraryLayoutStyle { LibraryLayoutStyle(rawValue: libraryLayoutRaw) ?? .grid }
+    @AppStorage(PlaydockSkin.storageKey) private var skinRaw = PlaydockSkin.luxury.rawValue
     @LocalState private var search = ""
     @LocalState private var showingSettingsSheet = false
     @LocalState private var showingAddGameSheet = false
@@ -136,6 +137,9 @@ struct GameModeView: View {
 
     private var dashboard: some View {
         ZStack {
+            SkinBackground(skin: PlaydockSkin(rawValue: skinRaw) ?? .luxury)
+                .ignoresSafeArea()
+
             if let themedGame {
                 DashboardBackdropView(game: themedGame)
                     .transition(.opacity)
