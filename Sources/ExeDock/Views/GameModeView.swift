@@ -27,6 +27,7 @@ struct GameModeView: View {
     @AppStorage(LibraryLayoutStyle.storageKey) private var libraryLayoutRaw = LibraryLayoutStyle.grid.rawValue
     private var libraryLayout: LibraryLayoutStyle { LibraryLayoutStyle(rawValue: libraryLayoutRaw) ?? .grid }
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw = PlaydockSkin.luxury.rawValue
+    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
     @LocalState private var search = ""
     @LocalState private var showingSettingsSheet = false
     @LocalState private var showingAddGameSheet = false
@@ -137,7 +138,7 @@ struct GameModeView: View {
 
     private var dashboard: some View {
         ZStack {
-            SkinBackground(skin: PlaydockSkin(rawValue: skinRaw) ?? .luxury)
+            SkinBackground(skin: skin)
                 .ignoresSafeArea()
 
             if let themedGame {
@@ -259,6 +260,13 @@ struct GameModeView: View {
         .animation(.easeInOut(duration: 0.4), value: themedGame?.appID)
         .animation(.easeInOut(duration: 0.25), value: showingControllerMode)
         .skinned()
+        // The real fix for "every skin's cards look like the same generic grey box": without this,
+        // system-adaptive colors (`Color.primary`, `.regularMaterial`, default text) silently
+        // followed the *system's* Dark Mode setting instead of the skin actually on screen - so a
+        // light skin like Brutalist (cream `SkinBackground`, hardcoded RGB) still got a "black"
+        // border that resolved to *white* against Dark Mode, invisible on its own light card. Each
+        // skin now pins the same light/dark identity its `SkinBackground` was already built for.
+        .preferredColorScheme(skin.colorScheme)
         .sheet(isPresented: $showingSettingsSheet) {
             DefaultSettingsSheet(isAdvancedMode: $isAdvancedMode)
         }
