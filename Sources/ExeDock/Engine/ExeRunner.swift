@@ -51,15 +51,17 @@ enum ExeRunner {
                 // The wrapper's own CLI is the normal, preferred path here - but it's been observed
                 // failing fast (exits within ~1s, a short log ending in
                 // "SikarugirSdk.WineAppInitializationError") for reasons that don't reproduce from
-                // outside it even against a known-good, already-initialized prefix. A short grace
-                // period distinguishes that from a real game just taking a moment to start: if the
-                // process is already gone with a non-zero status, don't strand the player on a
-                // launch that silently did nothing - fall through and run the exe directly instead,
-                // against this exact same wrapper's own prefix, borrowing its own wine binary (the
-                // identical mechanism `preferWrapperEngine` already uses below for a borrowed
-                // wrapper engine).
+                // outside it even against a known-good, already-initialized prefix. Critically, that
+                // failure exits *cleanly* (status 0, not a crash) - "Closing Sikarugir" is its own
+                // graceful shutdown message - so `terminationStatus` can't distinguish it from a
+                // real success. `isRunning` after a short grace period is the only reliable signal:
+                // a real game launch keeps the process alive; this failure is always gone well before
+                // 2 seconds. If it's already gone for any reason, don't strand the player on a launch
+                // that silently did nothing - fall through and run the exe directly instead, against
+                // this exact same wrapper's own prefix, borrowing its own wine binary (the identical
+                // mechanism `preferWrapperEngine` already uses below for a borrowed wrapper engine).
                 try? await Task.sleep(for: .seconds(2))
-                if process.isRunning || process.terminationStatus == 0 {
+                if process.isRunning {
                     return process
                 }
                 DiagnosticsLog.log("Sikarugir wrapper CLI exited fast for \(baseName) (status \(process.terminationStatus)) - falling back to a direct launch against \(appPath).")
@@ -110,7 +112,12 @@ enum ExeRunner {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: wineBinary)
-        process.arguments = [exePath] + arguments
+        // `start /unix <path>` rather than passing the exe path straight to wine - captured live
+        // from what Sikarugir's own Configure "Test Run" actually invokes (watched via `ps aux`
+        // the instant it was clicked), not a guess. `start.exe` is wine's own real, documented
+        // helper for launching a program from a host (unix-style) path, and does its own path
+        // translation/launch setup that a bare `wine <path>` invocation skips.
+        process.arguments = ["start", "/unix", exePath] + arguments
         // Matches what actually double-clicking an exe in Explorer does: run with the exe's own
         // folder as the working directory. A real, confirmed cause of custom games (Unreal Engine
         // titles especially, which often resolve their own Content/Saved folders relative to the
