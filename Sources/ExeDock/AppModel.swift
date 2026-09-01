@@ -369,18 +369,15 @@ final class AppModel: ObservableObject {
         statusMessage = "Launching \(game.effectiveName)…"
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                let process = try await ExeRunner.run(
+                // A returned `nil` means the launch was delegated to the wrapper's own Configure
+                // app (see `ExeRunner.run`'s own doc comment) rather than ExeDock running the exe
+                // itself - a real launch either way, just one this code doesn't hold a Process
+                // handle for.
+                try await ExeRunner.run(
                     exePath: game.exePath, in: bottle, arguments: game.launchArguments, config: config,
                     preferWrapperEngine: true
                 )
-                // `nil` means the launch was delegated to a Sikarugir wrapper app (see
-                // `ExeRunner.run`'s own doc comment) rather than ExeDock running the exe itself -
-                // say so honestly, since "Launched" would otherwise overstate what actually
-                // happened: the wrapper is open, but the player still picks the game from there.
-                let message = process == nil
-                    ? "Opened \(bottle.name) - launch \(game.effectiveName) from there"
-                    : "Launched \(game.effectiveName)"
-                await MainActor.run { [weak self] in self?.statusMessage = message }
+                await MainActor.run { [weak self] in self?.statusMessage = "Launched \(game.effectiveName)" }
             } catch {
                 await MainActor.run { [weak self] in self?.errorMessage = error.localizedDescription }
             }

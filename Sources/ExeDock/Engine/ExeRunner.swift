@@ -18,22 +18,26 @@ enum ExeRunner {
         let timestamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
         let baseName = (exePath as NSString).lastPathComponent
 
-        // A game living inside a *specific* Sikarugir wrapper's own bottle is launched through that
-        // wrapper's own launcher binary (Contents/MacOS/Sikarugir - the same binary its
-        // CFBundleExecutable points at, just invoked directly instead of through Finder/
-        // LaunchServices) using its own real, documented CLI: `sikarugir run <file> [flags]` -
-        // confirmed by reading that binary's own embedded `strings` output, which includes its
-        // full `Usage: sikarugir [options] ...` help text verbatim (down to the literal source
-        // file name, `Sikarugir/SikarugirCliAdapter.swift`) - not a guess. Critically, that same
-        // help text also documents `(no options)` as "run (or debug) main bat/msi/exe file" - i.e.
-        // launching the wrapper with no arguments at all runs whatever it's already configured for
-        // by default, completely unrelated to which specific custom game was actually clicked in
-        // Playdock. That's confirmed as the real, exact cause of a real bug: launching "Subliminal"
-        // instead started a stale, already-crashed "Dreamcore" process, because that happened to be
-        // this particular bottle's own configured default. Passing `run <exePath>` explicitly,
-        // every single launch, is what "should change and load the exe path to the right everytime
-        // for what game launched" actually requires - not just opening the app and hoping.
+        // A game living inside a *specific* Sikarugir wrapper's own bottle is launched by driving
+        // that wrapper's own Configure app: set its "Windows app" path to this exact exe, then
+        // trigger its own Test Run action - "just open configs and launch custom games after
+        // setting the right paths, the test run works perfectly well," per live, repeated feedback,
+        // confirmed live and repeatedly myself: the raw CLI (`Contents/MacOS/Sikarugir run <file>`,
+        // tried first historically) fails with a WineAppInitializationError that never reproduces
+        // outside it, and a direct `wine start /unix <file>` invocation gets some titles running but
+        // not others (a real D3D12/vkd3d limitation against this Mac's Vulkan stack) - but
+        // Configure's own Test Run, against the exact same engine/bottle/title, has launched every
+        // game tried this way. See `SikarugirConfigureLauncher`'s own doc comment for how it's
+        // actually driven (Accessibility APIs against real, found UI elements, not a blind
+        // keystroke). Only falls back to the CLI-then-direct-wine chain below if that's unavailable.
         if case .sikarugirWrapper(let appPath) = bottle.kind {
+            do {
+                try await SikarugirConfigureLauncher.launch(exePath: exePath, wrapperAppPath: appPath, driveCPath: bottle.driveCPath)
+                return nil // Configure owns the actual launch from here - no Process handle to return.
+            } catch {
+                DiagnosticsLog.log("Configure-driven launch failed for \(baseName): \(error.localizedDescription) - falling back to the wrapper CLI.")
+            }
+
             let launcherBinary = appPath + "/Contents/MacOS/Sikarugir"
             if FileManager.default.isExecutableFile(atPath: launcherBinary) {
                 let logPath = (logsDir as NSString).appendingPathComponent("\(baseName)-\(timestamp).log")
