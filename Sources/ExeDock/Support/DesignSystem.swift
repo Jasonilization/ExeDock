@@ -97,6 +97,34 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
     var hasShadow: Bool {
         self != .brutalist && self != .soft
     }
+
+    /// The real, bundled display face for this skin's most prominent text (falls back to a bold
+    /// system font in this same `fontDesign` for a skin that deliberately has no display face of
+    /// its own - see `SkinFonts`'s own doc comment for why).
+    func displayFont(size: CGFloat) -> Font {
+        if let name = SkinFonts.postscriptName(for: self) {
+            return .custom(name, size: size)
+        }
+        return .system(size: size, weight: .bold, design: fontDesign)
+    }
+}
+
+/// A title/headline that renders in the active skin's own real display face - the one thing that
+/// actually makes switching skins look like switching identities rather than just recoloring the
+/// same system font. Used everywhere a game's name is the most prominent text on screen (grid
+/// cards, every new library layout's tiles/heroes).
+struct SkinTitleText: View {
+    let text: String
+    var size: CGFloat = 17
+    var lineLimit: Int? = 1
+    @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
+    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
+
+    var body: some View {
+        Text(text)
+            .font(skin.displayFont(size: size))
+            .lineLimit(lineLimit)
+    }
 }
 
 private struct CardSurface: ViewModifier {

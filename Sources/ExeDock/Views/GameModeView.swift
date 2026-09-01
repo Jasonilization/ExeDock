@@ -741,9 +741,7 @@ private struct GameCardView: View {
             artwork
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 4) {
-                    Text(game.name)
-                        .font(.title2.weight(.semibold))
-                        .lineLimit(1)
+                    SkinTitleText(text: game.name, size: 20)
                         .help(developerHelpText)
                     Spacer()
                     if isAdvancedMode && game.source == .wineBottle {
@@ -1108,8 +1106,7 @@ struct GameDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(game.name)
-                .font(.system(size: 34, weight: .bold))
+            SkinTitleText(text: game.name, size: 34)
                 .foregroundStyle(.white)
             if storeInfo?.metacriticScore != nil || !(storeInfo?.genres.isEmpty ?? true) {
                 HStack(spacing: 10) {

@@ -159,8 +159,7 @@ struct CustomGameDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text(game.effectiveName)
-                    .font(.system(size: 34, weight: .bold))
+                SkinTitleText(text: game.effectiveName, size: 34)
                     .foregroundStyle(.white)
                 Text("Custom Game")
                     .font(.caption.weight(.semibold))

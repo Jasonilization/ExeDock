@@ -70,7 +70,7 @@ private struct LibraryEntryTile: View {
                     Circle().fill(.green).frame(width: 9, height: 9).padding(6)
                 }
             }
-            Text(entry.name).font(.callout.weight(.semibold)).lineLimit(1).frame(width: width, alignment: .leading)
+            SkinTitleText(text: entry.name, size: 15).frame(width: width, alignment: .leading)
         }
         .contentShape(Rectangle())
         .onTapGesture { onOpen() }
@@ -101,7 +101,7 @@ struct LibraryShelvesLayout: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(runningTracker.runningGames[featured.id] != nil ? "CONTINUE PLAYING" : "FEATURED")
                                 .font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.75))
-                            Text(featured.name).font(.system(size: 36, weight: .bold)).foregroundStyle(.white)
+                            SkinTitleText(text: featured.name, size: 36).foregroundStyle(.white)
                             if let desc = featuredPresentation?.description {
                                 Text(desc).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(2).frame(maxWidth: 460, alignment: .leading)
                             }
@@ -177,7 +177,7 @@ struct LibrarySidebarLayout: View {
                     LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .center, endPoint: .bottom)
                     VStack(alignment: .leading, spacing: 10) {
                         if presentation?.isCustom == true { Text("CUSTOM GAME").font(.caption.bold()).foregroundStyle(.purple) }
-                        Text(selected.name).font(.system(size: 30, weight: .bold)).foregroundStyle(.white)
+                        SkinTitleText(text: selected.name, size: 30).foregroundStyle(.white)
                         if let desc = presentation?.description {
                             Text(desc).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(3).frame(maxWidth: 440, alignment: .leading)
                         }
