@@ -76,8 +76,8 @@ struct CustomGameCardView: View {
                         .foregroundStyle(.orange)
                 }
 
-                if let runningInfo {
-                    runningBadge(runningInfo)
+                if runningInfo != nil {
+                    RunningBadge()
                 } else if isMissing {
                     HStack(spacing: 10) {
                         Button("Locate Game") { locateGame() }
@@ -222,26 +222,6 @@ struct CustomGameCardView: View {
         .frame(height: artworkHeight)
         .clipped()
         .onHover { isHoveringArtwork = $0 }
-    }
-
-    private func runningBadge(_ info: RunningProcessInfo) -> some View {
-        TimelineView(.periodic(from: info.startedAt, by: 60)) { context in
-            HStack(spacing: 8) {
-                Circle().fill(.green).frame(width: 8, height: 8)
-                Text("Running \(elapsedString(from: info.startedAt, to: context.date))")
-                    .font(.callout.weight(.medium))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
-        }
-    }
-
-    private func elapsedString(from start: Date, to now: Date) -> String {
-        let minutes = max(0, Int(now.timeIntervalSince(start) / 60))
-        let hours = minutes / 60
-        let remainder = minutes % 60
-        return hours > 0 ? "\(hours)h \(remainder)m" : "\(remainder)m"
     }
 
     /// Re-runs the same file picker used to add a game in the first place - only updates `exePath`,
