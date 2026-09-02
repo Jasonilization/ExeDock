@@ -23,6 +23,7 @@ struct GameModeView: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     @ObservedObject private var controllerObserver = ControllerObserver.shared
+    @Environment(\.colorScheme) private var systemColorScheme
     @AppStorage("com.exedock.advancedMode") private var isAdvancedMode = false
     @AppStorage(LibraryLayoutStyle.storageKey) private var libraryLayoutRaw = LibraryLayoutStyle.grid.rawValue
     private var libraryLayout: LibraryLayoutStyle { LibraryLayoutStyle(rawValue: libraryLayoutRaw) ?? .grid }
@@ -45,6 +46,10 @@ struct GameModeView: View {
     /// the grid's actual rendering (that's plain `.adaptive`, handled natively by SwiftUI). See
     /// `gridColumns`'s own doc comment for why this split matters.
     @LocalState private var gridWidth: CGFloat = 0
+    /// Resolved art/genre/description per entry, feeding the real WebView-rendered grid
+    /// (`SkinWebGridView`) - kept independently of the native layouts' own per-tile resolution so a
+    /// game's info only ever needs to be fetched once regardless of which structure is on screen.
+    @LocalState private var libraryPresentations: [String: LibraryPresentation] = [:]
 
     private enum GameSortOption: String, CaseIterable, Identifiable {
         case name = "Name"
@@ -74,6 +79,63 @@ struct GameModeView: View {
             return filtered.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         case .recentlyUpdated:
             return filtered.sorted { $0.sortDate > $1.sortDate }
+        }
+    }
+
+    /// The one place a library entry's id (as reported by a tap - a native SwiftUI gesture in every
+    /// other layout, a JS bridge message from `SkinWebGridView`) turns into actually opening its
+    /// detail view - shared so every structure's "open" routes through identical logic.
+    private func openLibraryEntry(id: String) {
+        guard let entry = libraryEntries.first(where: { $0.id == id }) else { return }
+        switch entry {
+        case .steam(let game): detailGame = game
+        case .custom(let game): detailCustomGame = game
+        }
+    }
+
+    /// `libraryEntries`, resolved into what the real WebView-rendered grid needs to paint an
+    /// authentic card: real fetched art (as a data URI - see `SkinWebArt`), genre, description, and
+    /// live running state. Resolution itself happens in `resolveLibraryPresentations()`, called from
+    /// a `.task` alongside the grid; this just assembles whatever's already been resolved so far,
+    /// so cards can render immediately with placeholders and fill in as fetches complete.
+    private var webGridEntries: [SkinWebGridEntry] {
+        libraryEntries.map { entry in
+            let presentation = libraryPresentations[entry.id]
+            let isCustom: Bool
+            let sizeText: String?
+            switch entry {
+            case .steam(let game):
+                isCustom = false
+                sizeText = game.sizeOnDisk.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
+            case .custom:
+                isCustom = true
+                sizeText = nil
+            }
+            return SkinWebGridEntry(
+                id: entry.id,
+                title: entry.name,
+                genre: presentation?.genre ?? "",
+                desc: presentation?.description ?? "",
+                art: SkinWebArt.dataURI(forImagePath: presentation?.artPath),
+                custom: isCustom,
+                running: runningTracker.runningGames[entry.id] != nil,
+                size: sizeText,
+                hours: nil
+            )
+        }
+    }
+
+    /// Resolves every entry currently in the library concurrently (already-resolved entries are
+    /// skipped, so this stays cheap on repeat calls) - driven by a `.task(id:)` keyed on the actual
+    /// set of entry ids, so adding/removing a game re-resolves only what's actually new.
+    private func resolveLibraryPresentations() async {
+        await withTaskGroup(of: (String, LibraryPresentation).self) { group in
+            for entry in libraryEntries where libraryPresentations[entry.id] == nil {
+                group.addTask { (entry.id, await LibraryPresentation.resolve(entry)) }
+            }
+            for await (id, presentation) in group {
+                libraryPresentations[id] = presentation
+            }
         }
     }
 
@@ -152,7 +214,9 @@ struct GameModeView: View {
                 if controllerObserver.isConnected && !controllerObserver.bannerDismissed {
                     controllerBanner
                 }
-                Divider()
+                // No separate Divider() here anymore - header's own new skin-accent bottom border
+                // (see header's doc comment) already does this row's job, and a plain gray divider
+                // right underneath it doubled the seam.
                 // The width measurement comes from a GeometryReader wrapping the ScrollView itself,
                 // not from measuring the grid (or any of its scrollable content) directly - two
                 // earlier attempts both measured something *downstream* of the grid's own sizing
@@ -168,27 +232,32 @@ struct GameModeView: View {
                 // descendant's measured size back up a SwiftUI view tree. "library cards still
                 // overlap," repeated live feedback across several fixes at this same spot.
                 if libraryLayout == .grid {
+                    // The real per-skin HTML/CSS from the mockups, rendered by an actual WKWebView -
+                    // "I mean identical not just in colour... i dont care how much new UI or
+                    // non-swift UI you need," per live feedback. GeometryReader gives it a real,
+                    // finite frame the same way the earlier Sidebar fix needed - a WKWebView with no
+                    // explicit size proposal from its own SwiftUI ancestor doesn't reliably size
+                    // itself at all. Search now lives inside the page itself (each skin's own
+                    // topbar field, made real) rather than a native field competing with it for the
+                    // same visual real estate the mockups already designed.
                     GeometryReader { geometry in
-                        ScrollViewReader { scrollProxy in
-                            ScrollView {
-                                VStack(alignment: .leading, spacing: 20) {
-                                    searchBar
-                                    gamesGrid
-                                }
-                                .padding(24)
-                            }
-                            .onChange(of: focusedTarget) { target in
-                                guard case .card(let index) = target, libraryEntries.indices.contains(index) else { return }
-                                withAnimation { scrollProxy.scrollTo(libraryEntries[index].id, anchor: .center) }
-                            }
-                        }
-                        // 48 = the VStack's own .padding(24) on each side, which sits between this
-                        // measurement and the grid it's actually sizing for.
-                        .background(
-                            Color.clear.preference(key: GridWidthKey.self, value: max(0, geometry.size.width - 48))
+                        SkinWebGridView(
+                            skin: skin,
+                            entries: webGridEntries,
+                            userName: model.steamProfile?.personaName ?? "Player",
+                            // Every skin now has a real, separately-designed light *and* dark
+                            // identity in skins.css (not just the six the original mockups already
+                            // had) - "make sure they all support dark mode and light mode. follow
+                            // system for dark/light," per live feedback, so this always reflects the
+                            // Mac's actual current appearance rather than a skin-pinned choice.
+                            isDark: systemColorScheme == .dark,
+                            onOpen: openLibraryEntry
                         )
+                        .frame(width: geometry.size.width, height: geometry.size.height)
                     }
-                    .onPreferenceChange(GridWidthKey.self) { gridWidth = $0 }
+                    .task(id: libraryEntries.map(\.id)) {
+                        await resolveLibraryPresentations()
+                    }
                 } else {
                     // Every non-grid layout is a genuinely different structure - some own their
                     // own sidebar/scrolling entirely (Sidebar, Steam-style), so they render full-
@@ -260,13 +329,12 @@ struct GameModeView: View {
         .animation(.easeInOut(duration: 0.4), value: themedGame?.appID)
         .animation(.easeInOut(duration: 0.25), value: showingControllerMode)
         .skinned()
-        // The real fix for "every skin's cards look like the same generic grey box": without this,
-        // system-adaptive colors (`Color.primary`, `.regularMaterial`, default text) silently
-        // followed the *system's* Dark Mode setting instead of the skin actually on screen - so a
-        // light skin like Brutalist (cream `SkinBackground`, hardcoded RGB) still got a "black"
-        // border that resolved to *white* against Dark Mode, invisible on its own light card. Each
-        // skin now pins the same light/dark identity its `SkinBackground` was already built for.
-        .preferredColorScheme(skin.colorScheme)
+        // Used to pin every skin to one fixed appearance here (see git history for why - a real
+        // Color.primary-vs-Dark-Mode bug this was the first fix for). Superseded now: "make sure
+        // they all support dark mode and light mode. follow system for dark/light," per live
+        // feedback - every skin's `SkinBackground` and card border/shadow logic is genuinely
+        // light/dark-aware on its own now (see `SkinBackground.swift`), so the dashboard just
+        // follows the Mac's real current appearance like everything else in the app already does.
         .sheet(isPresented: $showingSettingsSheet) {
             DefaultSettingsSheet(isAdvancedMode: $isAdvancedMode)
         }
@@ -351,27 +419,50 @@ struct GameModeView: View {
     private var header: some View {
         HStack(spacing: 10) {
             profileAvatar
-            Text(model.steamProfile?.personaName ?? "Steam")
-                .font(.headline)
+            SkinTitleText(text: model.steamProfile?.personaName ?? "Steam", size: 17, lineLimit: 1)
             Text(model.steamGames.isEmpty ? "No games installed" : "\(model.steamGames.count) game\(model.steamGames.count == 1 ? "" : "s")")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            headerIconButton(systemImage: "plus", help: "Add Game", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(0)) {
-                showingAddGameSheet = true
-            }
-            .keyboardShortcut("n", modifiers: .command)
+            // Grouped under one shared, skin-tinted backing instead of floating as separate bordered
+            // controls - "make sure top bar is the same UI look too," per live feedback. Sort lives
+            // here rather than inside the grid's own content now - the Grid layout's search/sort
+            // strip was replaced by each skin's own real, functional topbar search field (see
+            // `SkinWebGridView`), but sort has no equivalent in any of the ten mockups (a real app
+            // capability the mockups never needed), so it stays as native chrome alongside
+            // Add/Refresh/Settings instead of being dropped - it still governs every layout's
+            // ordering, not just Grid's.
+            HStack(spacing: 6) {
+                Picker("Sort", selection: $sortOption) {
+                    ForEach(GameSortOption.allCases) { option in
+                        Text(option.rawValue).tag(option)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 180)
+                headerIconButton(systemImage: "plus", help: "Add Game", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(0)) {
+                    showingAddGameSheet = true
+                }
+                .keyboardShortcut("n", modifiers: .command)
 
-            headerIconButton(systemImage: "arrow.clockwise", help: "Refresh", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(1)) {
-                model.refreshSteamGames()
-                model.refreshSteamProfile()
-            }
-            .keyboardShortcut("r", modifiers: .command)
-            .disabled(model.isLoadingSteamGames)
+                headerIconButton(systemImage: "arrow.clockwise", help: "Refresh", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(1)) {
+                    model.refreshSteamGames()
+                    model.refreshSteamProfile()
+                }
+                .keyboardShortcut("r", modifiers: .command)
+                .disabled(model.isLoadingSteamGames)
 
-            headerIconButton(systemImage: "gearshape", help: "Settings", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(2)) {
-                showingSettingsSheet = true
+                headerIconButton(systemImage: "gearshape", help: "Settings", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(2)) {
+                    showingSettingsSheet = true
+                }
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(skin.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: skin.cardRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: skin.cardRadius, style: .continuous)
+                    .strokeBorder(skin.accent.opacity(0.18), lineWidth: skin.borderWidth)
+            )
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -379,6 +470,15 @@ struct GameModeView: View {
         // above the grid, grid above the backdrop) instead of sitting flush/transparent against
         // whatever's behind it, so it reads as its own distinct layer even over a themed backdrop.
         .background(.bar)
+        // "make sure top bar is the same UI look too," per live feedback - this native strip sits
+        // directly above each skin's own real, mockup-identical topbar (inside the WebView-rendered
+        // grid) or its own themed backdrop (every other layout), so a flat, unthemed system bar
+        // right above it read as an obvious seam. A bottom accent rule in the skin's own color and
+        // border weight - the same language `cardSurface()` already uses - ties it back in without
+        // needing a bespoke reskin of genuinely native, non-mockup chrome (Add/Refresh/Settings/Sort).
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(skin.accent.opacity(0.55)).frame(height: skin.borderWidth)
+        }
     }
 
     /// A soft rounded-square, icon-only button - used for the header's secondary actions
@@ -696,12 +796,7 @@ struct GameModeView: View {
     /// identical no matter which structure is on screen; only how entries are arranged differs.
     @ViewBuilder
     private var alternateLayout: some View {
-        let openDetail: (LibraryEntry) -> Void = { entry in
-            switch entry {
-            case .steam(let game): detailGame = game
-            case .custom(let game): detailCustomGame = game
-            }
-        }
+        let openDetail: (LibraryEntry) -> Void = { openLibraryEntry(id: $0.id) }
         switch libraryLayout {
         case .grid: EmptyView() // unreachable - handled above
         case .shelves: LibraryShelvesLayout(entries: libraryEntries, onOpenDetail: openDetail)

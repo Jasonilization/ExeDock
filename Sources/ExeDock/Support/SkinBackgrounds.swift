@@ -8,6 +8,8 @@ import SwiftUI
 /// most of what actually reads as a different visual world.
 struct SkinBackground: View {
     let skin: PlaydockSkin
+    @Environment(\.colorScheme) private var colorScheme
+    private var isDark: Bool { colorScheme == .dark }
 
     var body: some View {
         switch skin {
@@ -15,41 +17,59 @@ struct SkinBackground: View {
             Color(nsColor: .windowBackgroundColor)
         case .glass:
             ZStack {
-                LinearGradient(colors: [Color(red: 0.96, green: 0.95, blue: 1.0), Color(red: 0.93, green: 0.95, blue: 0.98)], startPoint: .top, endPoint: .bottom)
-                RadialGradient(colors: [.purple.opacity(0.28), .clear], center: UnitPoint(x: 0.15, y: -0.1), startRadius: 10, endRadius: 480)
-                RadialGradient(colors: [.pink.opacity(0.26), .clear], center: UnitPoint(x: 1.0, y: 0.15), startRadius: 10, endRadius: 420)
-                RadialGradient(colors: [.mint.opacity(0.24), .clear], center: UnitPoint(x: 0.4, y: 1.05), startRadius: 10, endRadius: 400)
+                if isDark {
+                    LinearGradient(colors: [Color(red: 0.047, green: 0.039, blue: 0.094), Color(red: 0.063, green: 0.047, blue: 0.133)], startPoint: .top, endPoint: .bottom)
+                    RadialGradient(colors: [.purple.opacity(0.22), .clear], center: UnitPoint(x: 0.15, y: -0.1), startRadius: 10, endRadius: 480)
+                    RadialGradient(colors: [.pink.opacity(0.2), .clear], center: UnitPoint(x: 1.0, y: 0.15), startRadius: 10, endRadius: 420)
+                    RadialGradient(colors: [.mint.opacity(0.16), .clear], center: UnitPoint(x: 0.4, y: 1.05), startRadius: 10, endRadius: 400)
+                } else {
+                    LinearGradient(colors: [Color(red: 0.96, green: 0.95, blue: 1.0), Color(red: 0.93, green: 0.95, blue: 0.98)], startPoint: .top, endPoint: .bottom)
+                    RadialGradient(colors: [.purple.opacity(0.28), .clear], center: UnitPoint(x: 0.15, y: -0.1), startRadius: 10, endRadius: 480)
+                    RadialGradient(colors: [.pink.opacity(0.26), .clear], center: UnitPoint(x: 1.0, y: 0.15), startRadius: 10, endRadius: 420)
+                    RadialGradient(colors: [.mint.opacity(0.24), .clear], center: UnitPoint(x: 0.4, y: 1.05), startRadius: 10, endRadius: 400)
+                }
             }
         case .brutalist:
-            Color(red: 0.996, green: 0.965, blue: 0.894)
+            isDark ? Color(red: 0.09, green: 0.078, blue: 0.063) : Color(red: 0.996, green: 0.965, blue: 0.894)
         case .cyber:
             ZStack {
-                Color(red: 0.02, green: 0.027, blue: 0.039)
-                GridPattern(spacing: 28, color: Color(red: 0, green: 0.94, blue: 1).opacity(0.06))
+                isDark ? Color(red: 0.02, green: 0.027, blue: 0.039) : Color(red: 0.933, green: 0.961, blue: 0.969)
+                GridPattern(spacing: 28, color: isDark ? Color(red: 0, green: 0.94, blue: 1).opacity(0.06) : Color(red: 0, green: 0.573, blue: 0.643).opacity(0.07))
             }
         case .soft:
-            Color(red: 0.90, green: 0.905, blue: 0.933)
+            isDark ? Color(red: 0.169, green: 0.176, blue: 0.227) : Color(red: 0.90, green: 0.905, blue: 0.933)
         case .editorial:
-            Color(red: 0.933, green: 0.941, blue: 0.902)
+            isDark ? Color(red: 0.086, green: 0.102, blue: 0.078) : Color(red: 0.933, green: 0.941, blue: 0.902)
         case .pixel:
             ZStack {
-                Color(red: 0.102, green: 0.11, blue: 0.173)
-                DotPattern(spacing: 24, dotSize: 3, color: Color(red: 0.161, green: 0.212, blue: 0.435))
+                isDark ? Color(red: 0.102, green: 0.11, blue: 0.173) : Color(red: 0.918, green: 0.945, blue: 0.984)
+                DotPattern(spacing: 24, dotSize: 3, color: isDark ? Color(red: 0.161, green: 0.212, blue: 0.435) : Color(red: 0.78, green: 0.839, blue: 0.937))
             }
         case .console:
             ZStack {
-                LinearGradient(colors: [Color(white: 0.11), Color(white: 0.10)], startPoint: .top, endPoint: .bottom)
-                DiagonalStripes(spacing: 4, angle: .degrees(115), color: .white.opacity(0.02))
+                if isDark {
+                    LinearGradient(colors: [Color(white: 0.11), Color(white: 0.10)], startPoint: .top, endPoint: .bottom)
+                    DiagonalStripes(spacing: 4, angle: .degrees(115), color: .white.opacity(0.02))
+                } else {
+                    LinearGradient(colors: [Color(white: 0.91), Color(white: 0.885)], startPoint: .top, endPoint: .bottom)
+                    DiagonalStripes(spacing: 4, angle: .degrees(115), color: .black.opacity(0.025))
+                }
             }
         case .minimal:
             Color(nsColor: .textBackgroundColor)
         case .vapor:
             ZStack {
-                LinearGradient(colors: [Color(red: 0.102, green: 0.043, blue: 0.18), Color(red: 0.176, green: 0.039, blue: 0.306), Color(red: 0.302, green: 0.059, blue: 0.361)], startPoint: .top, endPoint: .bottom)
-                RadialGradient(colors: [Color(red: 1, green: 0.18, blue: 0.90).opacity(0.33), .clear], center: UnitPoint(x: 0.2, y: 0), startRadius: 10, endRadius: 520)
-                RadialGradient(colors: [Color(red: 0, green: 0.9, blue: 1).opacity(0.3), .clear], center: UnitPoint(x: 1.0, y: 0.3), startRadius: 10, endRadius: 460)
+                if isDark {
+                    LinearGradient(colors: [Color(red: 0.102, green: 0.043, blue: 0.18), Color(red: 0.176, green: 0.039, blue: 0.306), Color(red: 0.302, green: 0.059, blue: 0.361)], startPoint: .top, endPoint: .bottom)
+                    RadialGradient(colors: [Color(red: 1, green: 0.18, blue: 0.90).opacity(0.33), .clear], center: UnitPoint(x: 0.2, y: 0), startRadius: 10, endRadius: 520)
+                    RadialGradient(colors: [Color(red: 0, green: 0.9, blue: 1).opacity(0.3), .clear], center: UnitPoint(x: 1.0, y: 0.3), startRadius: 10, endRadius: 460)
+                } else {
+                    LinearGradient(colors: [Color(red: 1.0, green: 0.941, blue: 0.973), Color(red: 1.0, green: 0.882, blue: 0.949), Color(red: 1.0, green: 0.839, blue: 0.918)], startPoint: .top, endPoint: .bottom)
+                    RadialGradient(colors: [Color(red: 1, green: 0.616, blue: 0.902).opacity(0.33), .clear], center: UnitPoint(x: 0.2, y: 0), startRadius: 10, endRadius: 520)
+                    RadialGradient(colors: [Color(red: 0.482, green: 0.902, blue: 1).opacity(0.33), .clear], center: UnitPoint(x: 1.0, y: 0.3), startRadius: 10, endRadius: 460)
+                }
                 VaporSun().frame(width: 220, height: 220).position(x: 900, y: 130)
-                PerspectiveGrid(color: Color(red: 1, green: 0.18, blue: 0.90).opacity(0.35))
+                PerspectiveGrid(color: Color(red: 1, green: 0.18, blue: 0.90).opacity(isDark ? 0.35 : 0.22))
                     .frame(height: 220)
                     .frame(maxHeight: .infinity, alignment: .bottom)
             }

@@ -5,6 +5,8 @@ import SwiftUI
 struct CDriveView: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var controllerObserver = ControllerObserver.shared
+    @AppStorage(PlaydockSkin.storageKey) private var skinRaw = PlaydockSkin.luxury.rawValue
+    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
     @LocalState private var selectedBottleID: String? = nil
     @LocalState private var pathStack: [String] = []
     /// Which row a controller's D-pad currently has highlighted - index into `entries`. Reset
@@ -49,6 +51,9 @@ struct CDriveView: View {
                 .buttonStyle(.bordered)
             }
             .padding(16)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(skin.accent.opacity(0.4)).frame(height: skin.borderWidth)
+            }
 
             breadcrumb
             Divider()
@@ -100,6 +105,14 @@ struct CDriveView: View {
             guard model.selectedSection == .cDrive, let focusedIndex, entries.indices.contains(focusedIndex) else { return }
             handleActivate(entries[focusedIndex])
         }
+        // "ui looks weird for the bottle browser sometimes. make sure it has the same UI look," per
+        // live feedback - this was plain, fully unstyled system chrome, the one screen in the app
+        // that never picked up the active skin at all. Accent tint + font design only (not a full
+        // `SkinBackground`/pinned color scheme like the game-library layouts use) - a Finder-style
+        // file browser stays on native adaptive backgrounds and genuinely follows system light/dark
+        // on its own, which is the correct, lower-risk way to get "the same look" here without
+        // resurrecting the exact light/dark-vs-fixed-palette bug the grid's cards had.
+        .skinned()
     }
 
     private var bottleSelection: Binding<String?> {
@@ -159,7 +172,7 @@ private struct CDriveRow: View {
                     .font(.body)
                 Spacer()
                 if entry.isExecutable {
-                    Text("Run").font(.callout).foregroundStyle(.secondary)
+                    Text("Run").font(.callout.weight(.medium)).foregroundStyle(Color.accentColor)
                 }
                 Button(action: onReveal) {
                     Image(systemName: "folder")

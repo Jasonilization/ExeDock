@@ -5,7 +5,6 @@ import AppKit
 final class AppModel: ObservableObject {
     enum SidebarSection: Hashable, CaseIterable {
         case gameMode
-        case library
         case cDrive
     }
 

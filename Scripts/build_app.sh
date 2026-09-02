@@ -39,6 +39,10 @@ echo "==> Copying skin fonts"
 mkdir -p "$APP_BUNDLE/Contents/Resources/Fonts"
 cp Sources/ExeDock/Resources/Fonts/*.ttf "$APP_BUNDLE/Contents/Resources/Fonts/"
 
+echo "==> Copying skin web template"
+mkdir -p "$APP_BUNDLE/Contents/Resources/SkinTemplate"
+cp Sources/ExeDock/Resources/SkinTemplate/*.html Sources/ExeDock/Resources/SkinTemplate/*.css Sources/ExeDock/Resources/SkinTemplate/*.js "$APP_BUNDLE/Contents/Resources/SkinTemplate/"
+
 echo "==> Codesigning"
 IDENTITY="Apple Development: thecleanestaccount@icloud.com (RUC8R3W68Y)"
 if security find-identity -v -p codesigning | grep -q "$IDENTITY"; then

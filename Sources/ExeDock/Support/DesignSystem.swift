@@ -90,25 +90,6 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
         self == .cyber || self == .vapor
     }
 
-    /// The real, root-cause fix for "every skin's cards look like the same generic grey box":
-    /// nothing was ever pinning the skin's OWN light/dark identity, so system-adaptive colors
-    /// (`Color.primary`, `.regularMaterial`, default text) quietly followed the *system's* Dark
-    /// Mode instead - a light skin like Brutalist got a cream `SkinBackground` (hardcoded RGB, so
-    /// that part always looked right) paired with `Color.primary` resolving to *white* (because the
-    /// Mac is in Dark Mode), making its "black" 3px border invisible against its own light card.
-    /// Every skin whose `SkinBackground` is a hardcoded light or dark treatment now pins that same
-    /// identity here via `.preferredColorScheme`, so its materials/text/borders render against the
-    /// appearance the skin was actually designed for - independent of the user's system setting.
-    /// Luxury/Minimal deliberately return `nil` (follow system) since their own backgrounds already
-    /// do the same (`.windowBackgroundColor`/`.textBackgroundColor`).
-    var colorScheme: ColorScheme? {
-        switch self {
-        case .luxury, .minimal: return nil
-        case .glass, .brutalist, .soft, .editorial: return .light
-        case .cyber, .pixel, .console, .vapor: return .dark
-        }
-    }
-
     var borderWidth: CGFloat {
         self == .brutalist ? 3 : 1
     }

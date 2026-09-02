@@ -125,13 +125,13 @@ struct ContentView: View {
         HStack(spacing: 10) {
             sectionButton(.gameMode)
             // A small visual gap, not a label - Steam still reads as the primary destination and
-            // Library/C: Drive as the secondary, grouped "Exe Loader" pair, just without spending a
-            // whole sidebar section header on it.
+            // C: Drive as the secondary "Exe Loader" tool, just without spending a whole sidebar
+            // section header on it. The old "Library" tab (a generic detected-apps browser) was
+            // removed entirely - "remove the other tab one, as that's the game browser," per live
+            // feedback: Game Mode's own dashboard is the real, polished game browser now, and a
+            // second, cruder one alongside it was pure redundancy.
             Divider().frame(height: 20)
-            HStack(spacing: 4) {
-                sectionButton(.library)
-                sectionButton(.cDrive)
-            }
+            sectionButton(.cDrive)
         }
     }
 
@@ -154,7 +154,6 @@ struct ContentView: View {
     private func title(for section: AppModel.SidebarSection) -> String {
         switch section {
         case .gameMode: return "Steam"
-        case .library: return "Library"
         case .cDrive: return "C: Drive"
         }
     }
@@ -162,7 +161,6 @@ struct ContentView: View {
     private func icon(for section: AppModel.SidebarSection) -> String {
         switch section {
         case .gameMode: return "gamecontroller.fill"
-        case .library: return "square.grid.2x2"
         case .cDrive: return "internaldrive"
         }
     }
@@ -185,8 +183,6 @@ struct ContentView: View {
             switch model.selectedSection {
             case .gameMode:
                 GameModeView()
-            case .library:
-                LibraryView()
             case .cDrive:
                 CDriveView()
             }
