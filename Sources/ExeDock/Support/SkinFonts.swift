@@ -15,12 +15,10 @@ enum SkinFonts {
     private static let files: [(file: String, postscriptName: String)] = [
         ("archivo-black", "ArchivoBlack-Regular"),
         ("barlowcondensed", "BarlowCondensed-Bold"),
-        ("fraunces", "Fraunces-9ptBlack"),
         ("jetbrainsmono", "JetBrainsMono-Regular"),
         ("orbitron", "Orbitron-Regular"),
         ("pressstart2p", "PressStart2P-Regular"),
         ("quicksand", "Quicksand-Light"),
-        ("righteous", "Righteous-Regular"),
     ]
 
     private static var didRegister = false
@@ -51,10 +49,8 @@ enum SkinFonts {
         case .brutalist: return "ArchivoBlack-Regular"
         case .cyber: return "Orbitron-Regular"
         case .soft: return "Quicksand-Light"
-        case .editorial: return "Fraunces-9ptBlack"
         case .pixel: return "PressStart2P-Regular"
         case .console: return "BarlowCondensed-Bold"
-        case .vapor: return "Righteous-Regular"
         }
     }
 }

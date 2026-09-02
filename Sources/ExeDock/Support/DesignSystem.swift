@@ -28,23 +28,25 @@ enum Playdock {
 /// hand-painted screens - "keep them as skins for each [layout]," per live feedback. Persisted via
 /// `@AppStorage` the same way `isAdvancedMode`/`uiScale` already are elsewhere in this app.
 enum PlaydockSkin: String, CaseIterable, Identifiable {
-    case luxury, glass, brutalist, cyber, soft, editorial, pixel, console, minimal, vapor
+    case luxury, glass, brutalist, cyber, soft, pixel, console, minimal
     var id: String { rawValue }
 
     static let storageKey = "com.exedock.librarySkin"
 
+    /// Plain, grounded names - "make all UI names less cringe... rename all these into better
+    /// names less flashy names even," per live feedback. Dropped the trendy prefixes/suffixes
+    /// ("Neo-", "Terminal", "Arcade", "Unit", "UI") that read as trying too hard, keeping each
+    /// skin's own real identity.
     var displayName: String {
         switch self {
-        case .luxury: return "Quiet Luxury"
+        case .luxury: return "Luxury"
         case .glass: return "Glass"
-        case .brutalist: return "Neobrutalist"
-        case .cyber: return "Cyber Terminal"
-        case .soft: return "Soft UI"
-        case .editorial: return "Editorial"
-        case .pixel: return "Pixel Arcade"
-        case .console: return "Console Unit"
+        case .brutalist: return "Brutalist"
+        case .cyber: return "Terminal"
+        case .soft: return "Soft"
+        case .pixel: return "Pixel"
+        case .console: return "Console"
         case .minimal: return "Minimal"
-        case .vapor: return "Vaporwave"
         }
     }
 
@@ -55,11 +57,9 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
         case .brutalist: return Color(red: 1.0, green: 0.30, blue: 0.42)
         case .cyber: return Color(red: 0.0, green: 0.94, blue: 1.0)
         case .soft: return Color(red: 0.42, green: 0.45, blue: 1.0)
-        case .editorial: return Color(red: 0.54, green: 0.43, blue: 0.23)
         case .pixel: return Color(red: 0.96, green: 0.81, blue: 0.48)
         case .console: return Color(red: 1.0, green: 0.48, blue: 0.10)
         case .minimal: return Color(red: 0.04, green: 0.37, blue: 1.0)
-        case .vapor: return Color(red: 1.0, green: 0.18, blue: 0.90)
         }
     }
 
@@ -77,17 +77,16 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
     var fontDesign: Font.Design {
         switch self {
         case .brutalist, .cyber, .pixel: return .monospaced
-        case .glass, .soft, .vapor: return .rounded
-        case .editorial: return .serif
+        case .glass, .soft: return .rounded
         default: return .default
         }
     }
 
-    /// Skins built around a specific dark backdrop (neon-on-black, retrowave gradient) commit to
-    /// that single look rather than trying to also work as a light theme - matches the guidance
-    /// that a deliberately single-world design is a legitimate choice, not an oversight.
+    /// Skins built around a specific dark backdrop (neon-on-black) commit to that single look
+    /// rather than trying to also work as a light theme - matches the guidance that a deliberately
+    /// single-world design is a legitimate choice, not an oversight.
     var forcesDarkSurface: Bool {
-        self == .cyber || self == .vapor
+        self == .cyber
     }
 
     var borderWidth: CGFloat {
@@ -218,7 +217,7 @@ private struct CardSurface: ViewModifier {
         let fillStyle: AnyShapeStyle
         if skin == .console {
             fillStyle = AnyShapeStyle(LinearGradient(colors: [Color(white: 0.16), Color(white: 0.12)], startPoint: .top, endPoint: .bottom))
-        } else if skin == .glass || skin == .vapor || skin.forcesDarkSurface {
+        } else if skin == .glass || skin.forcesDarkSurface {
             fillStyle = AnyShapeStyle(.ultraThinMaterial)
         } else {
             fillStyle = AnyShapeStyle(.regularMaterial)
@@ -270,7 +269,7 @@ private struct TileSurface: ViewModifier {
     func body(content: Content) -> some View {
         let shape = PlaydockCardShape(skin: skin, cornerRadius: skin.cardRadius)
         let hardShadow: Color? = hardShadowColor(for: skin)
-        let isGlassy = skin == .glass || skin == .vapor
+        let isGlassy = skin == .glass
         let offset: CGFloat = isHovering ? 9 : 6
 
         let backgroundStyle: AnyShapeStyle = isGlassy ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.clear)
@@ -283,7 +282,7 @@ private struct TileSurface: ViewModifier {
         // Broken into typed steps - see CardSurface's own doc comment on this same pattern (a real
         // Swift type-checker limitation with this many chained modifiers + conditional content).
         let step1 = content
-            // Glass and Vaporwave's cards are real translucent panels over whatever's behind them
+            // Glass's cards are real translucent panels over whatever's behind them
             // even for a raw art tile - the mockups' own `backdrop-filter: blur(...)` - not just a
             // border and shadow bolted onto opaque art.
             .background(backgroundStyle)
@@ -357,7 +356,7 @@ enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
         case .sidebar: return "Sidebar"
         case .list: return "List"
         case .steam: return "Steam-style"
-        case .carousel: return "Poster Carousel"
+        case .carousel: return "Carousel"
         case .spotlight: return "Spotlight"
         }
     }

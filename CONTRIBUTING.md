@@ -14,8 +14,8 @@ No Xcode required - this machine's own dev setup is Command Line Tools only, and
 built that way on purpose so anyone can build it the same way:
 
 ```sh
-git clone https://github.com/Jasonilization/ExeDock.git
-cd ExeDock
+git clone https://github.com/Jasonilization/Playdock.git
+cd Playdock
 ./Scripts/build_app.sh        # swift build -c release, assemble Playdock.app, codesign
 ```
 

@@ -14,7 +14,7 @@ html,body{margin:0;padding:0;background:transparent;}
 input.search{outline:none;-webkit-appearance:none;appearance:none;font-family:inherit;color:inherit;}
 input.search::placeholder{color:inherit;opacity:0.6;}
 
-/* ================= 1. Quiet Luxury (native macOS) ================= */
+/* ================= 1. Luxury (native macOS) ================= */
 .lux{ --bg:#f6f5f3; --panel:#ffffffcc; --line:rgba(0,0,0,.08); --fg:#1c1b19; --sub:#6b6863; --accent:#b08d57; }
 [data-stage-theme="dark"] .lux{ --bg:#151412; --panel:#211f1caa; --line:rgba(255,255,255,.08); --fg:#f1efe9; --sub:#9b968c; }
 .lux{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',system-ui,sans-serif;background:var(--bg);color:var(--fg);min-height:100vh;}
@@ -75,7 +75,7 @@ input.search::placeholder{color:inherit;opacity:0.6;}
 .glass .pulse{width:7px;height:7px;border-radius:50%;background:#3ce6c6;box-shadow:0 0 0 0 #3ce6c6aa;animation:glasspulse 1.6s infinite;}
 @keyframes glasspulse{ 0%{box-shadow:0 0 0 0 #3ce6c688;} 70%{box-shadow:0 0 0 8px transparent;} 100%{box-shadow:0 0 0 0 transparent;} }
 
-/* ================= 3. Neobrutalist ================= */
+/* ================= 3. Brutalist ================= */
 .brut{ --bg:#fef6e4; --fg:#111; --accent:#ff4d6d; --accent2:#3a86ff; --line:#111; }
 [data-stage-theme="dark"] .brut{ --bg:#171410; --fg:#fefbf3; --line:#fefbf3; }
 .brut{font-family:'Space Mono',monospace;background:var(--bg);color:var(--fg);min-height:100vh;}
@@ -98,7 +98,7 @@ input.search::placeholder{color:inherit;opacity:0.6;}
 .brut .cta:active{transform:translate(2px,2px);}
 .brut .run{background:#06d6a0;color:#111;}
 
-/* ================= 4. Cyberpunk terminal ================= */
+/* ================= 4. Terminal ================= */
 .cyber{ --bg:#05070a; --panel:#0c1118; --line:#1c2733; --fg:#d7f9ff; --sub:#5f7c8c; --accent:#00f0ff; --accent2:#ff2e88; --gridline:rgba(0,240,255,.03); --glow:0 0 10px var(--accent); }
 .cyber{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--fg);min-height:100vh;
   background-image:linear-gradient(var(--gridline) 1px,transparent 1px),linear-gradient(90deg,var(--gridline) 1px,transparent 1px);
@@ -128,7 +128,7 @@ input.search::placeholder{color:inherit;opacity:0.6;}
 .cyber .cursor{display:inline-block;width:8px;height:14px;background:var(--accent);margin-left:6px;animation:cyberblink 1s steps(1) infinite;vertical-align:-2px;}
 @keyframes cyberblink{ 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
 
-/* ================= 5. Neumorphic soft UI ================= */
+/* ================= 5. Soft ================= */
 .neu{ --bg:#e6e7ee; --fg:#3d3f52; --sub:#8891ab; --accent:#6c72ff; --sd:#c3c6d4; --hl:#ffffff; }
 [data-stage-theme="dark"] .neu{ --bg:#2b2d3a; --fg:#e8e9f3; --sub:#9497b3; --sd:#212330; --hl:#363a4c; }
 .neu{font-family:'Quicksand',sans-serif;background:var(--bg);color:var(--fg);min-height:100vh;}
@@ -152,37 +152,7 @@ input.search::placeholder{color:inherit;opacity:0.6;}
 .neu .cta:active{box-shadow:inset 4px 4px 8px var(--sd),inset -4px -4px 8px var(--hl);}
 .neu .run{color:#2ecc71;}
 
-/* ================= 6. Editorial magazine ================= */
-.edit{ --bg:#eef0e6; --fg:#1c2b1f; --sub:#54604f; --accent:#8a6d3b; --line:#c9cdb9; }
-[data-stage-theme="dark"] .edit{ --bg:#161a14; --fg:#eef0e6; --sub:#a3ab97; --line:#333a2c; }
-.edit{font-family:'Source Serif 4',Georgia,serif;background:var(--bg);color:var(--fg);min-height:100vh;}
-.edit .topbar{position:sticky;top:0;z-index:20;background:var(--bg);display:flex;align-items:baseline;justify-content:space-between;padding:22px 48px;border-bottom:2px solid var(--fg);}
-.edit .who{font-family:'Fraunces';font-weight:700;font-size:20px;letter-spacing:-.01em;}
-.edit .count{font-size:12px;color:var(--sub);font-style:italic;}
-.edit main{max-width:1360px;margin:0 auto;padding:44px 48px 80px;}
-.edit .feature{display:grid;grid-template-columns:1.1fr 1fr;gap:40px;align-items:center;padding-bottom:42px;border-bottom:1px solid var(--line);margin-bottom:42px;}
-.edit .feature .art{height:280px;border-radius:2px;background-size:cover;background-position:center;}
-.edit .eyebrow{font-family:'Source Serif 4';font-style:italic;color:var(--accent);font-size:13px;margin:0 0 10px;}
-.edit .feature h1{font-family:'Fraunces';font-size:44px;font-weight:700;line-height:1.02;margin:0 0 16px;text-wrap:balance;letter-spacing:-.01em;}
-.edit .feature p{font-size:16px;line-height:1.6;color:var(--sub);max-width:46ch;margin:0 0 20px;}
-.edit .feature .cta{font-family:'Source Serif 4';font-size:14px;font-weight:600;color:var(--fg);border-bottom:2px solid var(--accent);padding-bottom:2px;background:none;border-top:none;border-left:none;border-right:none;cursor:pointer;transition:opacity .08s;}
-.edit .feature .cta:active{opacity:.55;}
-.edit h2{font-family:'Fraunces';font-size:14px;text-transform:uppercase;letter-spacing:.1em;font-weight:600;color:var(--sub);margin:0 0 24px;}
-.edit .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:36px 30px;}
-.edit .card{cursor:pointer;}
-.edit .card .art{height:150px;margin-bottom:12px;border-radius:2px;background-size:cover;background-position:center;}
-.edit .card .title{font-family:'Fraunces';font-size:18px;font-weight:600;margin:0 0 3px;}
-.edit .card .genre{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);margin:0 0 8px;}
-.edit .card .desc{font-size:13px;color:var(--sub);line-height:1.55;margin:0;}
-.edit .badge{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);border:1px solid var(--accent);padding:2px 7px;border-radius:2px;}
-.edit .run{display:inline-block;margin-top:8px;font-size:12px;color:var(--accent);font-style:italic;}
-.edit .dropcap:first-letter{float:left;font-family:'Fraunces';font-size:64px;line-height:0.8;padding:6px 8px 0 0;font-weight:700;color:var(--accent);}
-.edit .feature-nav{display:flex;align-items:center;gap:14px;margin:-24px 0 42px;}
-.edit .feature-nav-btn{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:none;color:var(--fg);font-family:'Fraunces';font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
-.edit .feature-nav-btn:hover{border-color:var(--accent);color:var(--accent);}
-.edit .feature-nav-count{font-size:12px;color:var(--sub);font-style:italic;}
-
-/* ================= 7. Retro pixel / arcade ================= */
+/* ================= 6. Retro pixel / arcade ================= */
 .pix{ --bg:#1a1c2c; --panel:#29366f; --fg:#f4f4f4; --sub:#94b0c2; --accent:#f6cf7a; --accent2:#ef7d57; --dot:#29366f; --ink:#10121c; }
 .pix{font-family:'VT323',monospace;background:var(--bg);color:var(--fg);min-height:100vh;font-size:18px;
   image-rendering:pixelated;
@@ -209,7 +179,7 @@ input.search::placeholder{color:inherit;opacity:0.6;}
 .pix .prompt{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);font-family:'Press Start 2P';font-size:11px;color:#fff;text-shadow:2px 2px 0 #10121c;animation:pixblink 1s steps(1) infinite;pointer-events:none;}
 @keyframes pixblink{ 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
 
-/* ================= 8. Skeuomorphic console ================= */
+/* ================= 7. Console ================= */
 .con{ --bg:#1a1a1c; --panel:#232326; --line:#3a3a3f; --fg:#e9e9ec; --sub:#8a8a92; --accent:#ff7a1a; --led:#39ff6a; --brushed1:#1c1c1e; --brushed2:#1a1a1c; --topbar-grad:linear-gradient(180deg,#2a2a2d,#202022); --card-grad:linear-gradient(180deg,#28282b,#1e1e20); --card-line:#000; --search-bg:#101012; --search-line:#000; }
 .con{font-family:'Barlow',sans-serif;color:var(--fg);min-height:100vh;
   background:
@@ -237,7 +207,7 @@ input.search::placeholder{color:inherit;opacity:0.6;}
 .con .run{background:linear-gradient(180deg,#28282b,#1e1e20);color:var(--led);}
 .con .screw{position:absolute;width:6px;height:6px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#555,#000 70%);}
 
-/* ================= 9. Ultra-minimal list ================= */
+/* ================= 8. Minimal list ================= */
 .lst{ --bg:#ffffff; --fg:#0b0c0f; --sub:#6b6f7a; --line:#e7e8ec; --accent:#0b5fff; }
 [data-stage-theme="dark"] .lst{ --bg:#0b0c0f; --fg:#f2f3f5; --sub:#8a8e99; --line:#1e2026; }
 .lst{font-family:'Public Sans',system-ui,sans-serif;background:var(--bg);color:var(--fg);min-height:100vh;}
@@ -262,39 +232,7 @@ input.search::placeholder{color:inherit;opacity:0.6;}
 .lst .launch{background:none;border:none;color:var(--accent);font-weight:600;font-size:12px;cursor:pointer;font-family:'Public Sans';}
 .lst .launch:active{opacity:.5;}
 
-/* ================= 10. Maximalist vaporwave ================= */
-.vap{ --fg:#fff2fb; --sub:#e0b8ff; --accent:#ff2ee6; --vap-bg:linear-gradient(180deg,#1a0b2e,#2d0a4e 45%,#4d0f5c 100%); --vap-glow1:radial-gradient(1000px 500px at 20% 0%, #ff2ee655, transparent 60%); --vap-glow2:radial-gradient(900px 600px at 100% 30%, #00e5ff55, transparent 55%); --card-bg:#ffffff0f; --card-line:#ffffff2a; --search-bg:#ffffff12; --search-line:#ffffff3a; }
-.vap{font-family:'Chakra Petch',sans-serif;color:var(--fg);min-height:100vh;position:relative;overflow:hidden;
-  background:var(--vap-glow1),var(--vap-glow2),var(--vap-bg);}
-.vap::before{content:'';position:absolute;left:0;right:0;bottom:0;height:45%;
-  background:repeating-linear-gradient(180deg, transparent 0 3px, rgba(255,255,255,.05) 3px 4px),
-  linear-gradient(0deg,#ff2ee633,transparent);
-  background-size:100% 100%,100% 100%; mask-image:linear-gradient(180deg,transparent,black 40%);}
-.vap .topbar{position:sticky;top:0;z-index:20;backdrop-filter:blur(14px);background:rgba(20,8,35,.35);display:flex;align-items:center;gap:16px;padding:22px 40px;border-bottom:1px solid #ffffff2a;}
-.vap .who{font-family:'Righteous';font-size:20px;background:linear-gradient(90deg,#ff2ee6,#00e5ff);-webkit-background-clip:text;background-clip:text;color:transparent;}
-.vap .count{font-size:12px;color:var(--sub);}
-.vap .spacer{flex:1;}
-.vap .search{border:1px solid var(--search-line);background:var(--search-bg);border-radius:10px;padding:9px 16px;font-size:13px;color:var(--sub);min-width:220px;}
-.vap main{position:relative;z-index:2;padding:40px;max-width:1400px;margin:0 auto;}
-.vap h1{font-family:'Righteous';font-size:34px;margin:0 0 30px;text-shadow:0 0 24px #ff2ee688;}
-.vap .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:24px;}
-.vap .card{background:var(--card-bg);border:1px solid var(--card-line);border-radius:16px;overflow:hidden;backdrop-filter:blur(6px);transition:transform .18s;cursor:pointer;}
-.vap .card:hover{transform:translateY(-4px);border-color:var(--accent);box-shadow:0 0 28px -6px var(--accent);}
-.vap .art{height:126px;position:relative;filter:saturate(1.5);background-size:cover;background-position:center;}
-.vap .badge{position:absolute;top:9px;left:9px;background:linear-gradient(90deg,#ff2ee6,#a020ff);font-size:10px;font-weight:700;padding:3px 9px;border-radius:999px;}
-.vap .body{padding:15px 17px 17px;}
-.vap .title{font-family:'Chakra Petch';font-weight:700;font-size:15.5px;margin:0 0 3px;}
-.vap .genre{font-size:11px;color:#00e5ff;letter-spacing:.04em;margin:0 0 8px;text-transform:uppercase;}
-.vap .desc{font-size:12px;color:var(--sub);line-height:1.5;margin:0 0 14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-.vap .cta,.vap .run{width:100%;border:none;border-radius:10px;padding:10px 0;font-family:'Chakra Petch';font-weight:700;font-size:12.5px;cursor:pointer;}
-.vap .cta{background:linear-gradient(90deg,#ff2ee6,#00e5ff);color:#160a24;transition:transform .08s;}
-.vap .cta:active{transform:scale(.96);}
-.vap .run{background:#ffffff14;border:1px solid #39ff9a;color:#39ff9a;}
-.vap .sun{position:absolute;top:-40px;right:60px;width:200px;height:200px;border-radius:50%;
-  background:repeating-linear-gradient(180deg,#ffde59 0 10px,#ff2ee6 10px 20px);
-  clip-path:circle(50%);opacity:.65;filter:blur(0.5px);z-index:1;}
-
-/* ================= Light-mode identities for the four "committed dark" skins =================
+/* ================= Light-mode identities for the "committed dark" skins =================
    The original mockups gave these four a single dark-only world - a legitimate choice for a static
    preview. A real, live app is used in both system appearances though, and "make sure they all
    support dark mode and light mode. follow system for dark/light" is explicit, live feedback: every
@@ -302,7 +240,7 @@ input.search::placeholder{color:inherit;opacity:0.6;}
    under a lighter page background. Each keeps its own accent language and texture; only the surface
    colors change. */
 
-/* Cyber Terminal, light: a real light-terminal aesthetic (Solarized Light, Xcode Light's own
+/* Terminal, light: a real light-terminal aesthetic (Solarized Light, Xcode Light's own
    console) - the neon commits to a deep teal/magenta pair with enough contrast to read as ink on
    paper instead of glow in the dark, and the glow itself backs off since a bloom that reads as
    "screen light in a dark room" doesn't mean the same thing on white. */
@@ -312,7 +250,7 @@ input.search::placeholder{color:inherit;opacity:0.6;}
 }
 [data-stage-theme="light"] .cyber .card:hover{box-shadow:0 0 18px -6px var(--accent);}
 
-/* Pixel Arcade, light: a daytime handheld palette (Game Boy Color overworld, not Game Boy Pocket) -
+/* Pixel, light: a daytime handheld palette (Game Boy Color overworld, not Game Boy Pocket) -
    sky-blue instead of navy, the same warm gold/coral accent pair carried straight over since it
    already reads clearly on a light ground. */
 [data-stage-theme="light"] .pix{
@@ -320,7 +258,7 @@ input.search::placeholder{color:inherit;opacity:0.6;}
   --accent:#c97a1e; --accent2:#d9502f; --dot:#c7d6ef; --ink:#182036;
 }
 
-/* Console Unit, light: brushed aluminum instead of gunmetal - a real alternate skeuomorphic register
+/* Console, light: brushed aluminum instead of gunmetal - a real alternate skeuomorphic register
    (think an original iMac/PowerBook's own light metal, not a dark studio rack unit), same orange
    accent and green LED, both already legible on light. */
 [data-stage-theme="light"] .con{
@@ -331,17 +269,3 @@ input.search::placeholder{color:inherit;opacity:0.6;}
   --card-line:#c7c7cc; --search-bg:#ffffff; --search-line:#c7c7cc;
 }
 [data-stage-theme="light"] .con h1{text-shadow:0 0 12px rgba(255,122,26,.25);}
-
-/* Vaporwave, light: pastel daytime vaporwave - a real, established alternate register of the same
-   aesthetic (sunset pastels instead of night-drive neon), same magenta accent doing the same job on
-   a warmer, brighter ground; card/search translucency switches from white-on-near-black (invisible
-   on white) to a dark-tinted glass so the same "frosted panel" read survives the swap. */
-[data-stage-theme="light"] .vap{
-  --fg:#4a1a5c; --sub:#8a4a9a; --accent:#ff2ee6;
-  --vap-bg:linear-gradient(180deg,#fff0f8,#ffe1f2 45%,#ffd6ea 100%);
-  --vap-glow1:radial-gradient(1000px 500px at 20% 0%, #ff9de655, transparent 60%);
-  --vap-glow2:radial-gradient(900px 600px at 100% 30%, #7be6ff55, transparent 55%);
-  --card-bg:#ffffffb0; --card-line:#ffffff; --search-bg:#ffffff55; --search-line:#ffffffb0;
-}
-[data-stage-theme="light"] .vap .card{box-shadow:0 4px 20px rgba(255,46,230,.12);}
-[data-stage-theme="light"] .vap .genre{color:#0098ad;}

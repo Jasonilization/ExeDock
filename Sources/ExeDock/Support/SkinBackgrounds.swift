@@ -38,8 +38,6 @@ struct SkinBackground: View {
             }
         case .soft:
             isDark ? Color(red: 0.169, green: 0.176, blue: 0.227) : Color(red: 0.90, green: 0.905, blue: 0.933)
-        case .editorial:
-            isDark ? Color(red: 0.086, green: 0.102, blue: 0.078) : Color(red: 0.933, green: 0.941, blue: 0.902)
         case .pixel:
             ZStack {
                 isDark ? Color(red: 0.102, green: 0.11, blue: 0.173) : Color(red: 0.918, green: 0.945, blue: 0.984)
@@ -57,75 +55,11 @@ struct SkinBackground: View {
             }
         case .minimal:
             Color(nsColor: .textBackgroundColor)
-        case .vapor:
-            ZStack {
-                if isDark {
-                    LinearGradient(colors: [Color(red: 0.102, green: 0.043, blue: 0.18), Color(red: 0.176, green: 0.039, blue: 0.306), Color(red: 0.302, green: 0.059, blue: 0.361)], startPoint: .top, endPoint: .bottom)
-                    RadialGradient(colors: [Color(red: 1, green: 0.18, blue: 0.90).opacity(0.33), .clear], center: UnitPoint(x: 0.2, y: 0), startRadius: 10, endRadius: 520)
-                    RadialGradient(colors: [Color(red: 0, green: 0.9, blue: 1).opacity(0.3), .clear], center: UnitPoint(x: 1.0, y: 0.3), startRadius: 10, endRadius: 460)
-                } else {
-                    LinearGradient(colors: [Color(red: 1.0, green: 0.941, blue: 0.973), Color(red: 1.0, green: 0.882, blue: 0.949), Color(red: 1.0, green: 0.839, blue: 0.918)], startPoint: .top, endPoint: .bottom)
-                    RadialGradient(colors: [Color(red: 1, green: 0.616, blue: 0.902).opacity(0.33), .clear], center: UnitPoint(x: 0.2, y: 0), startRadius: 10, endRadius: 520)
-                    RadialGradient(colors: [Color(red: 0.482, green: 0.902, blue: 1).opacity(0.33), .clear], center: UnitPoint(x: 1.0, y: 0.3), startRadius: 10, endRadius: 460)
-                }
-                VaporSun().frame(width: 220, height: 220).position(x: 900, y: 130)
-                PerspectiveGrid(color: Color(red: 1, green: 0.18, blue: 0.90).opacity(isDark ? 0.35 : 0.22))
-                    .frame(height: 220)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-            }
         }
     }
 }
 
-/// The neon striped "retrowave sun" - concentric rings alternating between two colors, matching
-/// the CSS `repeating-linear-gradient` circle from the Vaporwave preview.
-private struct VaporSun: View {
-    var body: some View {
-        ZStack {
-            ForEach(0..<9, id: \.self) { i in
-                Circle()
-                    .trim(from: 0, to: 1)
-                    .stroke(i.isMultiple(of: 2) ? Color(red: 1, green: 0.87, blue: 0.35) : Color(red: 1, green: 0.18, blue: 0.9), lineWidth: 12)
-                    .frame(width: CGFloat(220 - i * 22), height: CGFloat(220 - i * 22))
-            }
-        }
-        .blur(radius: 1)
-        .opacity(0.55)
-    }
-}
-
-/// A perspective-tilted neon grid floor, matching the Vaporwave preview's CSS 3D-transformed grid.
-private struct PerspectiveGrid: View {
-    let color: Color
-    var body: some View {
-        GeometryReader { geo in
-            Canvas { context, size in
-                let horizonY: CGFloat = 0
-                let rows = 10
-                for row in 0...rows {
-                    let t = CGFloat(row) / CGFloat(rows)
-                    let y = horizonY + t * t * size.height
-                    var path = Path()
-                    path.move(to: CGPoint(x: 0, y: y))
-                    path.addLine(to: CGPoint(x: size.width, y: y))
-                    context.stroke(path, with: .color(color.opacity(0.5 - t * 0.35)), lineWidth: 1)
-                }
-                let cols = 14
-                for col in 0...cols {
-                    let t = CGFloat(col) / CGFloat(cols) - 0.5
-                    var path = Path()
-                    path.move(to: CGPoint(x: size.width / 2 + t * size.width * 0.3, y: 0))
-                    path.addLine(to: CGPoint(x: size.width / 2 + t * size.width * 2.2, y: size.height))
-                    context.stroke(path, with: .color(color.opacity(0.3)), lineWidth: 1)
-                }
-            }
-        }
-        .allowsHitTesting(false)
-        .mask(LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom))
-    }
-}
-
-/// A faint repeating grid of hairlines, matching the Cyber Terminal preview's CSS background-image
+/// A faint repeating grid of hairlines, matching the Terminal preview's CSS background-image
 /// grid.
 private struct GridPattern: View {
     let spacing: CGFloat
@@ -153,7 +87,7 @@ private struct GridPattern: View {
     }
 }
 
-/// A repeating dot grid, matching the Pixel Arcade preview's CSS radial-gradient dot background.
+/// A repeating dot grid, matching the Pixel preview's CSS radial-gradient dot background.
 private struct DotPattern: View {
     let spacing: CGFloat
     let dotSize: CGFloat
@@ -174,7 +108,7 @@ private struct DotPattern: View {
     }
 }
 
-/// A subtle diagonal hairline texture, matching the Console Unit preview's brushed-panel
+/// A subtle diagonal hairline texture, matching the Console preview's brushed-panel
 /// repeating-linear-gradient.
 private struct DiagonalStripes: View {
     let spacing: CGFloat

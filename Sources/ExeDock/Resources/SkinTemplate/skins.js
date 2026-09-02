@@ -69,18 +69,11 @@ function handleSearchInput(value) {
   doRender();
 }
 
-// Editorial's single "featured" slot - was permanently the first game with no way to change it.
-let FEATURED_INDEX = 0;
-function cycleFeatured(delta) {
-  FEATURED_INDEX += delta;
-  doRender();
-}
-
 // Every card in every design below carries data-id + onclick="postClick('...')" - a single,
 // consistent bridge point no matter which skin's markup wraps it.
 const click = (id) => `onclick="postClick('${id}')"`;
 
-/* ================= 1. Quiet Luxury ================= */
+/* ================= 1. Luxury ================= */
 function design_luxury(games, meta) {
   const cards = games.map(gm => `
     <div class="card" ${click(gm.id)}>
@@ -133,7 +126,7 @@ function design_glass(games, meta) {
     </div>`;
 }
 
-/* ================= 3. Neobrutalist ================= */
+/* ================= 3. Brutalist ================= */
 function design_brutal(games, meta) {
   const cards = games.map(gm => `
     <div class="card" ${click(gm.id)}>
@@ -152,7 +145,7 @@ function design_brutal(games, meta) {
     </div>`;
 }
 
-/* ================= 4. Cyberpunk terminal ================= */
+/* ================= 4. Terminal ================= */
 function design_cyber(games, meta) {
   const runningCount = games.filter(g => g.running).length;
   const customCount = games.filter(g => g.custom).length;
@@ -178,7 +171,7 @@ function design_cyber(games, meta) {
     </div>`;
 }
 
-/* ================= 5. Neumorphic soft UI ================= */
+/* ================= 5. Soft ================= */
 function design_neu(games, meta) {
   const cards = games.map(gm => `
     <div class="card" ${click(gm.id)}>
@@ -195,50 +188,7 @@ function design_neu(games, meta) {
     </div>`;
 }
 
-/* ================= 6. Editorial magazine ================= */
-function design_editorial(games, meta) {
-  if (!games.length) return `<div class="edit"><div class="topbar"><span class="who">The Library</span></div><main><h2>No games yet</h2></main></div>`;
-  // The featured slot used to be permanently games[0] - "it's always stuck on baldi basics for
-  // the main focus... have a button to switch left and right games," per live feedback. Real,
-  // browsable state now, clamped against however many games are actually in view (search can
-  // shrink that list out from under a stale index).
-  const idx = ((FEATURED_INDEX % games.length) + games.length) % games.length;
-  const feature = games[idx];
-  const rest = games.filter((_, i) => i !== idx);
-  const cards = rest.map(gm => `
-    <div class="card" ${click(gm.id)}>
-      <div class="art" style="${artStyle(gm, 30, 80)}"></div>
-      <p class="title">${esc(gm.title)}</p>
-      <p class="genre">${esc(gm.genre)}${gm.custom ? ' · <span class="badge">Custom</span>' : ''}</p>
-      <p class="desc dropcap">${esc(gm.desc)}</p>
-      ${gm.running ? '<span class="run">Currently playing</span>' : ''}
-    </div>`).join('');
-  const nav = games.length > 1 ? `
-    <div class="feature-nav">
-      <button class="feature-nav-btn" onclick="event.stopPropagation();cycleFeatured(-1)" aria-label="Previous">‹</button>
-      <span class="feature-nav-count">${idx + 1} / ${games.length}</span>
-      <button class="feature-nav-btn" onclick="event.stopPropagation();cycleFeatured(1)" aria-label="Next">›</button>
-    </div>` : '';
-  return `
-    <div class="edit">
-      <div class="topbar"><span class="who">The Library, No.${games.length}</span><span class="count">Curated for ${esc(meta.user)}</span></div>
-      <main>
-        <div class="feature" ${click(feature.id)}>
-          <div class="art" style="${artStyle(feature, 35, 150)}"></div>
-          <div>
-            <p class="eyebrow">Featured${feature.running ? ' — playing now' : ''}</p>
-            <h1>${esc(feature.title)}</h1>
-            <p class="dropcap">${esc(feature.desc)}</p>
-            <button class="cta">Continue Reading →</button>
-          </div>
-        </div>
-        ${nav}
-        ${rest.length ? '<h2>Also in your collection</h2><div class="grid">' + cards + '</div>' : ''}
-      </main>
-    </div>`;
-}
-
-/* ================= 7. Retro pixel / arcade ================= */
+/* ================= 6. Retro pixel / arcade ================= */
 function design_pixel(games, meta) {
   const cards = games.map(gm => `
     <div class="card" ${click(gm.id)}>
@@ -258,7 +208,7 @@ function design_pixel(games, meta) {
     </div>`;
 }
 
-/* ================= 8. Skeuomorphic console ================= */
+/* ================= 7. Console ================= */
 function design_console(games, meta) {
   const screws = '<span class="screw" style="top:6px;left:6px"></span><span class="screw" style="top:6px;right:6px"></span><span class="screw" style="bottom:6px;left:6px"></span><span class="screw" style="bottom:6px;right:6px"></span>';
   const cards = games.map(gm => `
@@ -279,7 +229,7 @@ function design_console(games, meta) {
     </div>`;
 }
 
-/* ================= 9. Ultra-minimal list ================= */
+/* ================= 8. Minimal list ================= */
 function design_list(games, meta) {
   const rows = games.map(gm => `
     <div class="row" ${click(gm.id)}>
@@ -302,37 +252,15 @@ function design_list(games, meta) {
     </div>`;
 }
 
-/* ================= 10. Maximalist vaporwave ================= */
-function design_vapor(games, meta) {
-  const cards = games.map(gm => `
-    <div class="card" ${click(gm.id)}>
-      <div class="art" style="${artStyle(gm, 85, 150)}">${gm.custom ? '<span class="badge">Custom</span>' : ''}</div>
-      <div class="body">
-        <p class="title">${esc(gm.title)}</p>
-        <p class="genre">${esc(gm.genre)}</p>
-        <p class="desc">${esc(gm.desc)}</p>
-        ${gm.running ? '<button class="cta run">● Running</button>' : '<button class="cta">Launch</button>'}
-      </div>
-    </div>`).join('');
-  return `
-    <div class="vap">
-      <div class="sun"></div>
-      <div class="topbar"><span class="who">PLAYDOCK</span><span class="count">${games.length} games · ${esc(meta.user)}</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="Search…" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
-      <main><h1>Your Library</h1><div class="grid">${cards}</div></main>
-    </div>`;
-}
-
 const DESIGNS = {
   luxury: design_luxury,
   glass: design_glass,
   brutalist: design_brutal,
   cyber: design_cyber,
   soft: design_neu,
-  editorial: design_editorial,
   pixel: design_pixel,
   console: design_console,
   minimal: design_list,
-  vapor: design_vapor,
 };
 
 // Called from Swift via evaluateJavaScript after every load and whenever the underlying data or
