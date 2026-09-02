@@ -79,6 +79,19 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The mockups' own `--accent2` - a real, distinct second color a handful of skins define
+    /// alongside their main accent (Pixel's own launch button is genuinely this color, not
+    /// `accent` - the two read close but aren't the same swatch). Skins with no second color of
+    /// their own just repeat `accent`, so every call site can use this unconditionally.
+    var accent2: Color {
+        switch self {
+        case .brutalist: return Color(red: 0.227, green: 0.525, blue: 1.0) // #3a86ff
+        case .cyber: return Color(red: 1.0, green: 0.18, blue: 0.53) // #ff2e88
+        case .pixel: return Color(red: 0.937, green: 0.490, blue: 0.341) // #ef7d57
+        default: return accent
+        }
+    }
+
     /// A card's own corner radius under this skin - brutalist/pixel go sharp, everything else
     /// stays rounded to some degree.
     var cardRadius: CGFloat {
@@ -331,8 +344,10 @@ private struct TileSurface: ViewModifier {
 /// native button (View Details, Launch, prev/next) stayed a plain, unthemed `.borderedProminent`
 /// regardless of skin. Same shape/shadow language as the cards, applied to buttons.
 struct PlaydockButtonStyle: ButtonStyle {
-    /// `true` for a primary action (View Details/Launch - filled, accent-colored); `false` for a
-    /// secondary control (prev/next nav - outlined, quieter).
+    /// `true` for a primary action (View Details/Launch); `false` for a secondary control
+    /// (prev/next nav). The mockups never actually style a "secondary button" of their own - only
+    /// `.cta`/`.run` exist - so this half stays a reasonable, self-consistent outline convention;
+    /// `prominent`'s own look below is a real, per-skin port instead.
     var prominent: Bool = true
     /// See `SkinTitleText.skinOverride` - same reason, same "every real call site leaves it nil"
     /// contract.
@@ -341,62 +356,141 @@ struct PlaydockButtonStyle: ButtonStyle {
     private var skin: PlaydockSkin { skinOverride ?? (PlaydockSkin(rawValue: skinRaw) ?? .luxury) }
 
     func makeBody(configuration: Configuration) -> some View {
-        let shape = PlaydockCardShape(skin: skin, cornerRadius: min(skin.cardRadius, 12))
-        let hardShadow: Color? = hardShadowColor(for: skin)
-        let isPressed = configuration.isPressed
-        let isSoft = skin == .soft
+        PlaydockButtonBody(configuration: configuration, look: playdockButtonLook(skin: skin, prominent: prominent, isPressed: configuration.isPressed), skin: skin)
+    }
+}
 
-        let fill: AnyShapeStyle
-        let labelColor: Color
-        if !prominent {
-            fill = AnyShapeStyle(Color.clear)
-            labelColor = skin.accent
-        } else if hardShadow != nil {
-            fill = AnyShapeStyle(Color.primary.opacity(0.001)) // stays hit-testable; real fill is .background below
-            labelColor = .primary
-        } else if skin == .console {
-            fill = AnyShapeStyle(LinearGradient(colors: [skin.accent.opacity(0.95), skin.accent], startPoint: .top, endPoint: .bottom))
-            labelColor = .black
-        } else if skin == .glass {
-            fill = AnyShapeStyle(.ultraThinMaterial)
-            labelColor = .primary
-        } else if isSoft {
-            fill = AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
-            labelColor = skin.accent
-        } else {
-            fill = AnyShapeStyle(skin.accent)
-            labelColor = .white
+/// One skin's own button recipe. Ported directly from that skin's real `.cta`/`.run` rule in
+/// skins.css instead of one generic "accent fill, white text" guess applied to every skin alike -
+/// "buttons still not matching to the UI in grids for other formats," per live feedback: each real
+/// button is structurally different (Luxury inverts fg/bg, Glass is a two-color gradient, Cyber is
+/// transparent with glowing outline text that only fills solid on press, Brutalist is a flat ink
+/// block with no shadow on the button itself at all, Pixel offsets a hard shadow in its own real
+/// `--accent2`, Console has a two-tone gradient and a real offset "lip" that flattens on press,
+/// Minimal has no visible chrome beyond colored text) - this reproduces that, not a sixth
+/// approximation of it. Shared by `PlaydockButtonStyle` (every card/hero/nav button) and
+/// `BigButtonStyle` (the single dominant Launch action) so the *same* real recipe backs both
+/// instead of the dominant button alone staying generic.
+struct PlaydockButtonLook {
+    var fill: AnyShapeStyle
+    var labelColor: Color
+    var borderColor: Color = .clear
+    var borderWidth: CGFloat = 0
+    var cornerRadius: CGFloat = 10
+    /// A second copy of the shape, filled with this color and offset behind the button - the real
+    /// box-shadow twin Pixel and Console's own buttons use, matching `cardSurface()`'s identical
+    /// technique for cards. `nil` everywhere else.
+    var hardOffsetColor: Color?
+    var hardOffsetX: CGFloat = 3
+    var hardOffsetY: CGFloat = 3
+    /// How far the button's own content shifts on press - Brutalist/Pixel move diagonally,
+    /// Console only moves down, matching each one's own real `:active` rule.
+    var pressOffsetX: CGFloat = 0
+    var pressOffsetY: CGFloat = 0
+    var pressFadesOpacity = false
+    var neumorphic = false
+    var scalesOnPress = true
+    var hasDropShadow = false
+}
+
+func playdockButtonLook(skin: PlaydockSkin, prominent: Bool, isPressed: Bool) -> PlaydockButtonLook {
+    guard prominent else {
+        return PlaydockButtonLook(fill: AnyShapeStyle(Color.clear), labelColor: skin.accent, borderColor: skin.accent.opacity(0.5), borderWidth: 1.5, cornerRadius: min(skin.cardRadius, 12), hasDropShadow: skin.hasShadow)
+    }
+    switch skin {
+    case .luxury:
+        // .lux .cta{background:var(--fg);color:var(--bg);...} - a real inverted "buy button", not
+        // an accent-colored one; Color.primary/.windowBackgroundColor already track light and
+        // dark exactly the way --fg/--bg do.
+        return PlaydockButtonLook(fill: AnyShapeStyle(Color.primary), labelColor: Color(nsColor: .windowBackgroundColor), cornerRadius: 9)
+    case .glass:
+        // .glass .cta{background:linear-gradient(135deg,#7c5cff,#ff5c97);color:#fff;}
+        let gradient = LinearGradient(colors: [skin.accent, Color(red: 1.0, green: 0.361, blue: 0.592)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        return PlaydockButtonLook(fill: AnyShapeStyle(gradient), labelColor: .white, cornerRadius: 12)
+    case .brutalist:
+        // .brut .cta{border:3px solid var(--line);background:#111;color:#fff;} - fixed ink fill
+        // regardless of light/dark (the mockup never overrides it), theme-aware border.
+        return PlaydockButtonLook(fill: AnyShapeStyle(Color(red: 0.067, green: 0.067, blue: 0.067)), labelColor: .white, borderColor: .primary, borderWidth: skin.borderWidth, cornerRadius: 0, pressOffsetX: 2, pressOffsetY: 2, scalesOnPress: false)
+    case .cyber:
+        // .cyber .cta{border:1px solid var(--accent);background:transparent;color:var(--accent);}
+        // .cyber .cta:active{background:var(--accent);color:#00131a;} - inverts solid on press.
+        if isPressed {
+            return PlaydockButtonLook(fill: AnyShapeStyle(skin.accent), labelColor: Color(red: 0.0, green: 0.075, blue: 0.102), cornerRadius: 0)
         }
+        return PlaydockButtonLook(fill: AnyShapeStyle(Color.clear), labelColor: skin.accent, borderColor: skin.accent, borderWidth: 1, cornerRadius: 0)
+    case .soft:
+        // .neu .cta{...box-shadow:5px 5px 10px var(--sd),-5px -5px 10px var(--hl);} - a real
+        // raised dual shadow (dark+light), not just the dark half.
+        return PlaydockButtonLook(fill: AnyShapeStyle(Color(nsColor: .windowBackgroundColor)), labelColor: skin.accent, cornerRadius: 14, neumorphic: true)
+    case .pixel:
+        // .pix .cta{background:var(--accent2);color:#10121c;box-shadow:3px 3px 0 #10121c;}
+        return PlaydockButtonLook(fill: AnyShapeStyle(skin.accent2), labelColor: Color(red: 0.063, green: 0.071, blue: 0.11), cornerRadius: 0, hardOffsetColor: hardShadowColor(for: .pixel), pressOffsetX: 3, pressOffsetY: 3, scalesOnPress: false)
+    case .console:
+        // .con .cta{background:linear-gradient(180deg,#ff9a44,var(--accent));color:#1a1000;
+        // box-shadow:0 2px 0 #9c4c00,...} .cta:active{box-shadow:0 0 0 #9c4c00;transform:
+        // translateY(2px);} - a real physical-button "lip" that flattens on press.
+        let gradient = LinearGradient(colors: [Color(red: 1.0, green: 0.604, blue: 0.267), skin.accent], startPoint: .top, endPoint: .bottom)
+        return PlaydockButtonLook(fill: AnyShapeStyle(gradient), labelColor: .black, cornerRadius: 6, hardOffsetColor: Color(red: 0.612, green: 0.298, blue: 0.0), hardOffsetX: 0, hardOffsetY: 2, pressOffsetY: 2, scalesOnPress: false)
+    case .minimal:
+        // .lst .launch{background:none;border:none;color:var(--accent);...} .launch:active{opacity:.5;}
+        return PlaydockButtonLook(fill: AnyShapeStyle(Color.clear), labelColor: skin.accent, cornerRadius: 0, pressFadesOpacity: true, scalesOnPress: false)
+    }
+}
 
-        let borderColor: Color = prominent ? (hardShadow ?? .clear) : skin.accent.opacity(0.5)
-        let borderWidth: CGFloat = prominent ? (hardShadow != nil ? skin.borderWidth : 0) : 1.5
-        let pressOffset: CGFloat = (hardShadow != nil && isPressed) ? 4 : 0
+/// Renders one button from an already-resolved `PlaydockButtonLook` - shared tail for
+/// `PlaydockButtonStyle` and `BigButtonStyle`, which differ only in padding/font size, not in what
+/// a skin's button actually looks like.
+struct PlaydockButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let look: PlaydockButtonLook
+    let skin: PlaydockSkin
+    var font: Font = .callout.weight(.semibold)
+    var horizontalPadding: CGFloat = 18
+    var verticalPadding: CGFloat = 10
 
-        return configuration.label
-            .font(.callout.weight(.semibold))
+    var body: some View {
+        let isPressed = configuration.isPressed
+        let shape = RoundedRectangle(cornerRadius: look.cornerRadius, style: .continuous)
+
+        // Typed steps rather than one long chain - see CardSurface's own doc comment on why
+        // (a real Swift type-checker limit with this many modifiers plus conditional content).
+        let step1 = configuration.label
+            .font(font)
             .fontDesign(skin.fontDesign)
-            .foregroundStyle(labelColor)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            .background(fill, in: shape)
-            // Soft UI's real neumorphic raised/pressed toggle - inset shadow when pressed, raised
-            // dual-shadow otherwise, matching cardSurface()'s own treatment.
-            .background(alignment: .center) {
-                if isSoft && !isPressed {
-                    shape.fill(Color.black.opacity(0.12)).offset(x: 3, y: 3).blur(radius: 4)
-                }
-            }
-            .overlay(shape.strokeBorder(borderColor, lineWidth: borderWidth))
+            .foregroundStyle(look.labelColor)
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
+            .opacity(look.pressFadesOpacity && isPressed ? 0.5 : 1)
+        let step2 = step1
+            .background(look.fill, in: shape)
+            .background(alignment: .center) { neumorphicHighlight(shape: shape, isPressed: isPressed) }
+        let step3 = step2
+            .overlay(shape.strokeBorder(look.borderColor, lineWidth: look.borderWidth))
             .clipShape(shape)
-            .background(alignment: .center) {
-                if let hardShadow {
-                    shape.fill(hardShadow).offset(x: pressOffset == 0 ? 5 : 1, y: pressOffset == 0 ? 5 : 1)
-                }
-            }
-            .offset(x: pressOffset, y: pressOffset)
-            .shadow(color: isPressed ? .clear : Color.black.opacity(skin.hasShadow ? 0.18 : 0), radius: 6, y: 3)
-            .scaleEffect(isPressed && hardShadow == nil ? 0.97 : 1)
+        let step4 = step3
+            .background(alignment: .center) { hardOffsetTwin(shape: shape, isPressed: isPressed) }
+        return step4
+            .offset(x: isPressed ? look.pressOffsetX : 0, y: isPressed ? look.pressOffsetY : 0)
+            .shadow(color: (!isPressed && look.hasDropShadow) ? Color.black.opacity(0.18) : .clear, radius: 6, y: 3)
+            .scaleEffect(isPressed && look.scalesOnPress ? 0.97 : 1)
             .animation(.easeOut(duration: 0.1), value: isPressed)
+    }
+
+    @ViewBuilder
+    private func neumorphicHighlight(shape: RoundedRectangle, isPressed: Bool) -> some View {
+        if look.neumorphic && !isPressed {
+            ZStack {
+                shape.fill(Color.black.opacity(0.12)).offset(x: 3, y: 3).blur(radius: 4)
+                shape.fill(Color.white.opacity(0.5)).offset(x: -3, y: -3).blur(radius: 4)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func hardOffsetTwin(shape: RoundedRectangle, isPressed: Bool) -> some View {
+        if let color = look.hardOffsetColor, !isPressed {
+            shape.fill(color).offset(x: look.hardOffsetX, y: look.hardOffsetY)
+        }
     }
 }
 
