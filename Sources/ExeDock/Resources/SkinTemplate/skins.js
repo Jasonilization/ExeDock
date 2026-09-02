@@ -30,6 +30,52 @@ function postClick(id) {
   try { window.webkit.messageHandlers.playdock.postMessage({ id: id, action: 'open' }); } catch (e) {}
 }
 
+// Real, live-filtering search state - each skin's own topbar field was static decorative text
+// until now (confirmed live: no oninput handler existed anywhere), matching neither the mockups'
+// own intent nor "make sure the search bar is usable," per live feedback. QUERY/ALL_GAMES/META are
+// module state so a render can be triggered from a plain oninput handler without threading
+// arguments through every one of the ten design_* functions.
+let ALL_GAMES = [];
+let META = { user: 'Player', theme: 'light' };
+let CURRENT_SKIN = 'luxury';
+let QUERY = '';
+
+function doRender() {
+  const stage = document.getElementById('stage');
+  const build = DESIGNS[CURRENT_SKIN] || DESIGNS.luxury;
+  const q = QUERY.trim().toLowerCase();
+  const filtered = q ? ALL_GAMES.filter(g => (g.title || '').toLowerCase().includes(q)) : ALL_GAMES;
+
+  // Re-rendering replaces the whole stage, including the search field itself - without restoring
+  // focus/cursor position afterward, every single keystroke would kick focus out of the field,
+  // making it unusable for typing more than one character at a time.
+  const activeWasSearch = document.activeElement && document.activeElement.id === 'search-input';
+  const selStart = activeWasSearch ? document.activeElement.selectionStart : null;
+  const selEnd = activeWasSearch ? document.activeElement.selectionEnd : null;
+
+  stage.innerHTML = build(filtered, META);
+
+  if (activeWasSearch) {
+    const input = document.getElementById('search-input');
+    if (input) {
+      input.focus();
+      try { input.setSelectionRange(selStart, selEnd); } catch (e) {}
+    }
+  }
+}
+
+function handleSearchInput(value) {
+  QUERY = value;
+  doRender();
+}
+
+// Editorial's single "featured" slot - was permanently the first game with no way to change it.
+let FEATURED_INDEX = 0;
+function cycleFeatured(delta) {
+  FEATURED_INDEX += delta;
+  doRender();
+}
+
 // Every card in every design below carries data-id + onclick="postClick('...')" - a single,
 // consistent bridge point no matter which skin's markup wraps it.
 const click = (id) => `onclick="postClick('${id}')"`;
@@ -54,7 +100,7 @@ function design_luxury(games, meta) {
         <div class="avatar"></div>
         <div><div class="who">${esc(meta.user)}</div><div class="count">${games.length} games</div></div>
         <div class="spacer"></div>
-        <div class="search">Search your games</div>
+        <input id="search-input" class="search" type="text" placeholder="Search your games" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)">
       </div>
       <main>
         <h1>Your Library</h1>
@@ -81,7 +127,7 @@ function design_glass(games, meta) {
       <div class="topbar">
         <div><div class="who">${esc(meta.user)}’s Library</div><div class="count">${games.length} games installed</div></div>
         <div class="spacer"></div>
-        <div class="search">Search…</div>
+        <input id="search-input" class="search" type="text" placeholder="Search…" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)">
       </div>
       <main><h1>Continue Playing</h1><div class="grid">${cards}</div></main>
     </div>`;
@@ -101,7 +147,7 @@ function design_brutal(games, meta) {
     </div>`).join('');
   return `
     <div class="brut">
-      <div class="topbar"><div class="who">PLAYDOCK</div><div class="count">${games.length} GAMES</div><div class="search">SEARCH YOUR GAMES_</div></div>
+      <div class="topbar"><div class="who">PLAYDOCK</div><div class="count">${games.length} GAMES</div><input id="search-input" class="search" type="text" placeholder="SEARCH YOUR GAMES_" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
       <main><h1>Library</h1><div class="grid">${cards}</div></main>
     </div>`;
 }
@@ -127,7 +173,7 @@ function design_cyber(games, meta) {
     : `${games.length} games${customCount ? ` · ${customCount} custom` : ''}`;
   return `
     <div class="cyber">
-      <div class="topbar"><span class="who">PLAY//DOCK</span><span class="count">${esc(meta.user)} · ${games.length} games</span><div class="spacer"></div><div class="search">&gt; search_<span class="cursor"></span></div></div>
+      <div class="topbar"><span class="who">PLAY//DOCK</span><span class="count">${esc(meta.user)} · ${games.length} games</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="&gt; search_" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
       <main><h1>LIBRARY.SYS</h1><p class="kicker">${esc(kicker)}</p><div class="grid">${cards}</div></main>
     </div>`;
 }
@@ -144,15 +190,21 @@ function design_neu(games, meta) {
     </div>`).join('');
   return `
     <div class="neu">
-      <div class="topbar"><div class="avatar"></div><div><div class="who">${esc(meta.user)}</div><div class="count">${games.length} games</div></div><div class="spacer"></div><div class="search">Search your games</div></div>
+      <div class="topbar"><div class="avatar"></div><div><div class="who">${esc(meta.user)}</div><div class="count">${games.length} games</div></div><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="Search your games" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
       <main><h1>Your Library</h1><div class="grid">${cards}</div></main>
     </div>`;
 }
 
 /* ================= 6. Editorial magazine ================= */
 function design_editorial(games, meta) {
-  const feature = games[0];
-  const rest = games.slice(1);
+  if (!games.length) return `<div class="edit"><div class="topbar"><span class="who">The Library</span></div><main><h2>No games yet</h2></main></div>`;
+  // The featured slot used to be permanently games[0] - "it's always stuck on baldi basics for
+  // the main focus... have a button to switch left and right games," per live feedback. Real,
+  // browsable state now, clamped against however many games are actually in view (search can
+  // shrink that list out from under a stale index).
+  const idx = ((FEATURED_INDEX % games.length) + games.length) % games.length;
+  const feature = games[idx];
+  const rest = games.filter((_, i) => i !== idx);
   const cards = rest.map(gm => `
     <div class="card" ${click(gm.id)}>
       <div class="art" style="${artStyle(gm, 30, 80)}"></div>
@@ -161,7 +213,12 @@ function design_editorial(games, meta) {
       <p class="desc dropcap">${esc(gm.desc)}</p>
       ${gm.running ? '<span class="run">Currently playing</span>' : ''}
     </div>`).join('');
-  if (!feature) return `<div class="edit"><div class="topbar"><span class="who">The Library</span></div><main><h2>No games yet</h2></main></div>`;
+  const nav = games.length > 1 ? `
+    <div class="feature-nav">
+      <button class="feature-nav-btn" onclick="event.stopPropagation();cycleFeatured(-1)" aria-label="Previous">‹</button>
+      <span class="feature-nav-count">${idx + 1} / ${games.length}</span>
+      <button class="feature-nav-btn" onclick="event.stopPropagation();cycleFeatured(1)" aria-label="Next">›</button>
+    </div>` : '';
   return `
     <div class="edit">
       <div class="topbar"><span class="who">The Library, No.${games.length}</span><span class="count">Curated for ${esc(meta.user)}</span></div>
@@ -175,6 +232,7 @@ function design_editorial(games, meta) {
             <button class="cta">Continue Reading →</button>
           </div>
         </div>
+        ${nav}
         ${rest.length ? '<h2>Also in your collection</h2><div class="grid">' + cards + '</div>' : ''}
       </main>
     </div>`;
@@ -194,7 +252,7 @@ function design_pixel(games, meta) {
     </div>`).join('');
   return `
     <div class="pix">
-      <div class="topbar"><span class="who">PLAYDOCK</span><span class="count">P1: ${esc(meta.user.toUpperCase())} · ${games.length} CARTS</span><div class="spacer"></div><div class="search">FIND GAME_</div></div>
+      <div class="topbar"><span class="who">PLAYDOCK</span><span class="count">P1: ${esc(meta.user.toUpperCase())} · ${games.length} CARTS</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="FIND GAME_" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
       <main><h1>SELECT GAME</h1><div class="grid">${cards}</div></main>
       <div class="prompt">PRESS A TO SELECT</div>
     </div>`;
@@ -216,7 +274,7 @@ function design_console(games, meta) {
     </div>`).join('');
   return `
     <div class="con">
-      <div class="topbar"><span class="led"></span><span class="who">PLAYDOCK UNIT</span><span class="count">USER 01 · ${games.length} TITLES LOADED</span><div class="spacer"></div><div class="search">SEARCH LIBRARY</div></div>
+      <div class="topbar"><span class="led"></span><span class="who">PLAYDOCK UNIT</span><span class="count">USER 01 · ${games.length} TITLES LOADED</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="SEARCH LIBRARY" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
       <main><h1>■ Game Select</h1><div class="grid">${cards}</div></main>
     </div>`;
 }
@@ -234,7 +292,7 @@ function design_list(games, meta) {
     </div>`).join('');
   return `
     <div class="lst">
-      <div class="topbar"><span class="who">Playdock</span><span class="count">${esc(meta.user)} · ${games.length} games</span><div class="spacer"></div><div class="search">Search</div></div>
+      <div class="topbar"><span class="who">Playdock</span><span class="count">${esc(meta.user)} · ${games.length} games</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="Search" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
       <main>
         <h1>Library</h1>
         <p class="sub">Sorted by name</p>
@@ -259,7 +317,7 @@ function design_vapor(games, meta) {
   return `
     <div class="vap">
       <div class="sun"></div>
-      <div class="topbar"><span class="who">PLAYDOCK</span><span class="count">${games.length} games · ${esc(meta.user)}</span><div class="spacer"></div><div class="search">Search…</div></div>
+      <div class="topbar"><span class="who">PLAYDOCK</span><span class="count">${games.length} games · ${esc(meta.user)}</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="Search…" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
       <main><h1>Your Library</h1><div class="grid">${cards}</div></main>
     </div>`;
 }
@@ -279,13 +337,13 @@ const DESIGNS = {
 
 // Called from Swift via evaluateJavaScript after every load and whenever the underlying data or
 // active skin/theme changes - a full re-render each time is simple, correct, and cheap enough for a
-// library of even a few hundred games.
+// library of even a few hundred games. QUERY is deliberately *not* reset here - a fresh push of
+// data from Swift (running-state changed, art finished loading) shouldn't blow away whatever the
+// user is mid-typing into the search field.
 window.PlaydockRender = function (skinKey, gamesJSON, metaJSON) {
-  const stage = document.getElementById('stage');
-  const build = DESIGNS[skinKey] || DESIGNS.luxury;
-  let games, meta;
-  try { games = JSON.parse(gamesJSON); } catch (e) { games = []; }
-  try { meta = JSON.parse(metaJSON); } catch (e) { meta = { user: 'Player', theme: 'light' }; }
-  document.documentElement.setAttribute('data-stage-theme', meta.theme === 'dark' ? 'dark' : 'light');
-  stage.innerHTML = build(games, meta);
+  try { ALL_GAMES = JSON.parse(gamesJSON); } catch (e) { ALL_GAMES = []; }
+  try { META = JSON.parse(metaJSON); } catch (e) { META = { user: 'Player', theme: 'light' }; }
+  CURRENT_SKIN = skinKey;
+  document.documentElement.setAttribute('data-stage-theme', META.theme === 'dark' ? 'dark' : 'light');
+  doRender();
 };

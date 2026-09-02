@@ -8,6 +8,11 @@
 html,body{margin:0;padding:0;background:transparent;}
 #stage{min-height:100vh;}
 #stage img,#stage svg{max-width:100%;}
+/* Every skin's .search is now a real <input> (was static text) - normalize the parts a browser's
+   own default input chrome would otherwise fight each skin's own border/background/font styling
+   with; every actual color/border/padding value still comes from each skin's own .search rule. */
+input.search{outline:none;-webkit-appearance:none;appearance:none;font-family:inherit;color:inherit;}
+input.search::placeholder{color:inherit;opacity:0.6;}
 
 /* ================= 1. Quiet Luxury (native macOS) ================= */
 .lux{ --bg:#f6f5f3; --panel:#ffffffcc; --line:rgba(0,0,0,.08); --fg:#1c1b19; --sub:#6b6863; --accent:#b08d57; }
@@ -172,6 +177,10 @@ html,body{margin:0;padding:0;background:transparent;}
 .edit .badge{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);border:1px solid var(--accent);padding:2px 7px;border-radius:2px;}
 .edit .run{display:inline-block;margin-top:8px;font-size:12px;color:var(--accent);font-style:italic;}
 .edit .dropcap:first-letter{float:left;font-family:'Fraunces';font-size:64px;line-height:0.8;padding:6px 8px 0 0;font-weight:700;color:var(--accent);}
+.edit .feature-nav{display:flex;align-items:center;gap:14px;margin:-24px 0 42px;}
+.edit .feature-nav-btn{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:none;color:var(--fg);font-family:'Fraunces';font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.edit .feature-nav-btn:hover{border-color:var(--accent);color:var(--accent);}
+.edit .feature-nav-count{font-size:12px;color:var(--sub);font-style:italic;}
 
 /* ================= 7. Retro pixel / arcade ================= */
 .pix{ --bg:#1a1c2c; --panel:#29366f; --fg:#f4f4f4; --sub:#94b0c2; --accent:#f6cf7a; --accent2:#ef7d57; --dot:#29366f; --ink:#10121c; }

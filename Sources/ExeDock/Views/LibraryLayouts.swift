@@ -106,6 +106,7 @@ private struct LibraryEntryTile: View {
     let onOpen: () -> Void
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     @LocalState private var presentation: LibraryPresentation?
+    @LocalState private var isHovering = false
 
     private var isRunning: Bool { runningTracker.runningGames[entry.id] != nil }
 
@@ -114,7 +115,8 @@ private struct LibraryEntryTile: View {
             ZStack(alignment: .topLeading) {
                 artView(path: presentation?.artPath, id: entry.id)
                     .frame(width: width, height: height)
-                    .tileSurface()
+                    .tileSurface(isHovering: isHovering)
+                    .onHover { isHovering = $0 }
                 if presentation?.isCustom == true {
                     Text("CUSTOM").font(.system(size: 9, weight: .bold)).padding(4).background(.purple, in: Capsule()).foregroundStyle(.white).padding(6)
                 }
@@ -137,11 +139,24 @@ struct LibraryShelvesLayout: View {
     let onOpenDetail: (LibraryEntry) -> Void
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     @LocalState private var featuredPresentation: LibraryPresentation?
+    /// Set the instant someone uses the prev/next arrows - once they have, that choice sticks
+    /// (browsing away and back doesn't silently snap back to whatever's running/first). "it's
+    /// always stuck on baldi basics for the main focus... have a button to switch left and right
+    /// games," per live feedback - the hero used to be permanently `entries.first` with no way to
+    /// change it at all.
+    @LocalState private var manualFeaturedID: String?
 
     private var featured: LibraryEntry? {
-        runningTracker.runningGames.keys.first.flatMap { id in entries.first { $0.id == id } } ?? entries.first
+        if let manualFeaturedID, let match = entries.first(where: { $0.id == manualFeaturedID }) { return match }
+        return runningTracker.runningGames.keys.first.flatMap { id in entries.first { $0.id == id } } ?? entries.first
     }
     private var customEntries: [LibraryEntry] { entries.filter { if case .custom = $0 { true } else { false } } }
+
+    private func cycleFeatured(by delta: Int) {
+        guard let featured, let currentIndex = entries.firstIndex(where: { $0.id == featured.id }), !entries.isEmpty else { return }
+        let newIndex = (currentIndex + delta + entries.count) % entries.count
+        manualFeaturedID = entries[newIndex].id
+    }
 
     var body: some View {
         ScrollView {
@@ -160,6 +175,15 @@ struct LibraryShelvesLayout: View {
                             Button("View Details") { onOpenDetail(featured) }.buttonStyle(.borderedProminent).controlSize(.large).padding(.top, 4)
                         }
                         .padding(32)
+                        if entries.count > 1 {
+                            HStack {
+                                heroNavButton(systemImage: "chevron.left") { cycleFeatured(by: -1) }
+                                Spacer()
+                                heroNavButton(systemImage: "chevron.right") { cycleFeatured(by: 1) }
+                            }
+                            .padding(.horizontal, 16)
+                            .frame(maxWidth: .infinity, maxHeight: 300)
+                        }
                     }
                     .task(id: featured.id) { featuredPresentation = await LibraryPresentation.resolve(featured) }
                 }
@@ -167,6 +191,18 @@ struct LibraryShelvesLayout: View {
                 shelf("Your Library", entries)
             }
         }
+    }
+
+    private func heroNavButton(systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(.black.opacity(0.35), in: Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(0.25)))
+        }
+        .buttonStyle(.plain)
     }
 
     private func shelf(_ title: String, _ items: [LibraryEntry]) -> some View {

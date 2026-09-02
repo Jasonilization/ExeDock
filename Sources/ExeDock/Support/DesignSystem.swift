@@ -127,49 +127,175 @@ struct SkinTitleText: View {
     }
 }
 
+/// A card's real silhouette under this skin - a plain rounded rect for most, but Cyber Terminal's
+/// own distinctive chamfered (cut-corner) shape, ported directly from its mockup's own
+/// `clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%,
+/// 0 14px)` - a real structural difference no amount of corner-radius tuning on a plain
+/// `RoundedRectangle` can reproduce. "make sure all the format like carasoul, steam style, etc is
+/// exactly matching to the quality of the grid layout... right now you only slapped on a wallpaper
+/// and font for the other formats," per live feedback - this is the real shape, not an
+/// approximation, shared by every layout's cards/tiles alike.
+struct PlaydockCardShape: InsettableShape {
+    let skin: PlaydockSkin
+    let cornerRadius: CGFloat
+    var insetAmount: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        let rect = rect.insetBy(dx: insetAmount, dy: insetAmount)
+        guard skin == .cyber else {
+            return RoundedRectangle(cornerRadius: max(0, cornerRadius - insetAmount), style: .continuous).path(in: rect)
+        }
+        let cut = max(0, min(14, min(rect.width, rect.height) / 4))
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + cut, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - cut))
+        path.addLine(to: CGPoint(x: rect.maxX - cut, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + cut))
+        path.closeSubpath()
+        return path
+    }
+
+    /// Required for `InsettableShape` (what actually makes `.strokeBorder(...)` available - a plain
+    /// `Shape` only gets the centered, non-inset `.stroke(...)`, which would draw half the border
+    /// outside the shape and get clipped away by the `.clipShape` right after it).
+    func inset(by amount: CGFloat) -> PlaydockCardShape {
+        var copy = self
+        copy.insetAmount += amount
+        return copy
+    }
+}
+
+/// Skins whose real mockup card gets a hard, unblurred offset "twin shape" shadow instead of a soft
+/// `.shadow()` glow - Neobrutalist's `box-shadow: 8px 8px 0` and Pixel Arcade's `box-shadow: 6px 6px
+/// 0` are the same real technique, just different ink colors.
+private func hardShadowColor(for skin: PlaydockSkin) -> Color? {
+    switch skin {
+    case .brutalist: return .primary
+    case .pixel: return Color(red: 0.063, green: 0.071, blue: 0.11) // #10121c, the mockup's own ink
+    default: return nil
+    }
+}
+
 private struct CardSurface: ViewModifier {
     var isHovering: Bool = false
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
     private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
 
+    /// The soft-shadow neumorphic highlight, precomputed as its own small view (not an inline `if`
+    /// inside the main chain) - Swift's type checker genuinely cannot solve this many chained
+    /// modifiers with conditional ViewBuilder content mixed in as one expression
+    /// ("failed to produce diagnostic for expression"), confirmed live against the real compiler,
+    /// not a style choice.
+    @ViewBuilder
+    private func softHighlight(shape: PlaydockCardShape) -> some View {
+        if skin == .soft {
+            shape.fill(Color(white: colorSchemeIsDark ? 0.16 : 1.0)).offset(x: -6, y: -6).blur(radius: 6).opacity(0.6)
+        }
+    }
+
+    @ViewBuilder
+    private func glassFill(shape: PlaydockCardShape) -> some View {
+        if skin == .glass {
+            shape.fill(.white.opacity(0.06))
+        }
+    }
+
+    @ViewBuilder
+    private func hardShadowTwin(shape: PlaydockCardShape, color: Color?, offset: CGFloat) -> some View {
+        if let color {
+            shape.fill(color).offset(x: offset, y: offset)
+        }
+    }
+
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: skin.cardRadius, style: .continuous)
+        let shape = PlaydockCardShape(skin: skin, cornerRadius: skin.cardRadius)
+        let hardShadow: Color? = hardShadowColor(for: skin)
+        let isSoft = skin == .soft
         let offset: CGFloat = isHovering ? 11 : 7
-        content
+
+        let fillStyle: AnyShapeStyle
+        if skin == .console {
+            fillStyle = AnyShapeStyle(LinearGradient(colors: [Color(white: 0.16), Color(white: 0.12)], startPoint: .top, endPoint: .bottom))
+        } else if skin == .glass || skin == .vapor || skin.forcesDarkSurface {
+            fillStyle = AnyShapeStyle(.ultraThinMaterial)
+        } else {
+            fillStyle = AnyShapeStyle(.regularMaterial)
+        }
+
+        let borderOpacity: Double = skin == .glass ? 0.35 : (isHovering ? 0.5 : 0.16)
+        let borderColor: Color = hardShadow ?? skin.accent.opacity(borderOpacity)
+
+        let shadowColor: Color = isSoft ? .black.opacity(0.22) : (skin.hasShadow ? .black.opacity(isHovering ? 0.30 : 0.16) : .clear)
+        let shadowRadius: CGFloat = isSoft ? 10 : (isHovering ? 24 : 12)
+        let shadowX: CGFloat = isSoft ? 6 : 0
+        let shadowY: CGFloat = isSoft ? 6 : (isHovering ? 12 : 6)
+        let hoverPop: CGFloat = (hardShadow != nil && isHovering) ? -3 : 0
+        let hoverScale: CGFloat = (isHovering && hardShadow == nil) ? 1.015 : 1
+
+        let step1 = content
             .fontDesign(skin.fontDesign)
-            .background(
-                skin == .glass ? AnyShapeStyle(.ultraThinMaterial)
-                    : skin.forcesDarkSurface ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.regularMaterial),
-                in: shape
-            )
-            .background(skin == .glass ? shape.fill(.white.opacity(0.06)) : nil)
-            .overlay(shape.strokeBorder(skin == .brutalist ? Color.primary : skin.accent.opacity(skin == .glass ? 0.35 : (isHovering ? 0.5 : 0.16)), lineWidth: skin.borderWidth))
+            .background(fillStyle, in: shape)
+        let step2 = step1
+            .background(glassFill(shape: shape))
+            .background(softHighlight(shape: shape))
+        let step3 = step2
+            .overlay(shape.strokeBorder(borderColor, lineWidth: skin.borderWidth))
             .clipShape(shape)
-            // Neobrutalist gets its own real, hard (unblurred) offset shadow - a solid-color twin
-            // shape behind the card, not `.shadow()` (which always blurs) - matching the mockup's
-            // own `box-shadow: 8px 8px 0` exactly instead of approximating it as a soft glow.
-            .background(alignment: .center) {
-                if skin == .brutalist {
-                    shape.fill(Color.primary).offset(x: offset, y: offset)
-                }
-            }
-            .shadow(color: skin.hasShadow ? .black.opacity(isHovering ? 0.30 : 0.16) : .clear, radius: isHovering ? 24 : 12, y: isHovering ? 12 : 6)
-            .offset(x: skin == .brutalist && isHovering ? -3 : 0, y: skin == .brutalist && isHovering ? -3 : 0)
-            .scaleEffect(isHovering && skin != .brutalist ? 1.015 : 1)
+        let step4 = step3
+            .background(hardShadowTwin(shape: shape, color: hardShadow, offset: offset))
+        return step4
+            .shadow(color: shadowColor, radius: shadowRadius, x: shadowX, y: shadowY)
+            .offset(x: hoverPop, y: hoverPop)
+            .scaleEffect(hoverScale)
             .animation(.easeOut(duration: 0.18), value: isHovering)
     }
+
+    private var colorSchemeIsDark: Bool { NSApp.effectiveAppearance.name == .darkAqua }
 }
 
 private struct TileSurface: ViewModifier {
+    var isHovering: Bool = false
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
     private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
 
+    @ViewBuilder
+    private func hardShadowTwin(shape: PlaydockCardShape, color: Color?, offset: CGFloat) -> some View {
+        if let color {
+            shape.fill(color).offset(x: offset, y: offset)
+        }
+    }
+
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: skin.cardRadius, style: .continuous)
-        content
+        let shape = PlaydockCardShape(skin: skin, cornerRadius: skin.cardRadius)
+        let hardShadow: Color? = hardShadowColor(for: skin)
+        let isGlassy = skin == .glass || skin == .vapor
+        let offset: CGFloat = isHovering ? 9 : 6
+
+        let backgroundStyle: AnyShapeStyle = isGlassy ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.clear)
+        let borderColor: Color = hardShadow ?? (isGlassy ? skin.accent.opacity(0.3) : Color.white.opacity(0.12))
+        let shadowColor: Color = skin.hasShadow ? .black.opacity(isHovering ? 0.35 : 0.25) : .clear
+        let shadowRadius: CGFloat = isHovering ? 12 : 8
+        let shadowY: CGFloat = isHovering ? 6 : 4
+        let hoverScale: CGFloat = (isHovering && hardShadow == nil) ? 1.03 : 1
+
+        // Broken into typed steps - see CardSurface's own doc comment on this same pattern (a real
+        // Swift type-checker limitation with this many chained modifiers + conditional content).
+        let step1 = content
+            // Glass and Vaporwave's cards are real translucent panels over whatever's behind them
+            // even for a raw art tile - the mockups' own `backdrop-filter: blur(...)` - not just a
+            // border and shadow bolted onto opaque art.
+            .background(backgroundStyle)
             .clipShape(shape)
-            .overlay(shape.strokeBorder(skin == .brutalist ? Color.primary : Color.white.opacity(0.12), lineWidth: skin.borderWidth))
-            .shadow(color: skin.hasShadow ? .black.opacity(0.25) : .clear, radius: 8, y: 4)
+        let step2 = step1
+            .overlay(shape.strokeBorder(borderColor, lineWidth: skin.borderWidth))
+        let step3 = step2
+            .background(hardShadowTwin(shape: shape, color: hardShadow, offset: offset))
+        return step3
+            .shadow(color: shadowColor, radius: shadowRadius, y: shadowY)
+            .scaleEffect(hoverScale)
+            .animation(.easeOut(duration: 0.16), value: isHovering)
     }
 }
 
@@ -178,8 +304,8 @@ extension View {
     /// icon tiles) - just the skin's corner radius, border, and shadow, with no material fill
     /// layered on top of real artwork the way a content card needs. Reads the same `PlaydockSkin`
     /// so every layout's tiles restyle together with the grid's own cards.
-    func tileSurface() -> some View {
-        modifier(TileSurface())
+    func tileSurface(isHovering: Bool = false) -> some View {
+        modifier(TileSurface(isHovering: isHovering))
     }
 }
 
