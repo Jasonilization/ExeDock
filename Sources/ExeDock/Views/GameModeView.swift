@@ -709,7 +709,6 @@ struct GameModeView: View {
         case .list: LibraryListLayout(entries: libraryEntries, onOpenDetail: openDetail)
         case .steam: LibrarySteamStyleLayout(entries: libraryEntries, onOpenDetail: openDetail)
         case .carousel: LibraryCarouselLayout(entries: libraryEntries, onOpenDetail: openDetail)
-        case .launchpad: LibraryLaunchpadLayout(entries: libraryEntries, onOpenDetail: openDetail)
         }
     }
 

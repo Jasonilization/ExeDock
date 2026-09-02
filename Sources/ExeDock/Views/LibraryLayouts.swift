@@ -45,6 +45,26 @@ private func artView(path: String?, id: String) -> some View {
     }
 }
 
+/// A small, square real-art icon for a row-based layout (Sidebar's list, List's rows) - resolves
+/// its own art independently of whatever else on screen is showing that entry, so a row shows the
+/// actual game icon the instant its own fetch completes rather than staying a flat placeholder
+/// color forever. "all small icons are just colours. either remove colours or have square proper
+/// game icons," per live feedback - square real art, falling back to the same placeholder gradient
+/// only for the entries that genuinely have no art at all.
+private struct SmallArtIcon: View {
+    let entry: LibraryEntry
+    var size: CGFloat = 30
+    var cornerRadius: CGFloat = 7
+    @LocalState private var presentation: LibraryPresentation?
+
+    var body: some View {
+        artView(path: presentation?.artPath, id: entry.id)
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .task(id: entry.id) { presentation = await LibraryPresentation.resolve(entry) }
+    }
+}
+
 // MARK: - Shared tile (used by Shelves, Steam-style, Carousel)
 
 private struct LibraryEntryTile: View {
@@ -145,50 +165,67 @@ struct LibrarySidebarLayout: View {
         entries.first { $0.id == selectedID } ?? entries.first
     }
 
-    var body: some View {
-        HStack(spacing: 0) {
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach(entries) { entry in
-                        let isSelected = entry.id == (selectedID ?? entries.first?.id)
-                        HStack(spacing: 10) {
-                            Circle().fill(placeholderTile(for: entry.id)).frame(width: 26, height: 26)
-                            Text(entry.name).lineLimit(1).fontWeight(isSelected ? .semibold : .regular)
-                            Spacer()
-                            if runningTracker.runningGames[entry.id] != nil { Circle().fill(.green).frame(width: 7, height: 7) }
-                        }
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(isSelected ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 7))
-                        .padding(.horizontal, 8)
-                        .contentShape(Rectangle())
-                        .onTapGesture { selectedID = entry.id }
-                    }
-                }
-                .padding(.vertical, 8)
-            }
-            .background(.regularMaterial)
-            .frame(width: 260)
+    /// A fixed sidebar column's width, in points - kept as a named constant since both the sidebar
+    /// itself and the detail pane's `GeometryReader`-derived width need to agree on it.
+    private static let sidebarWidth: CGFloat = 260
 
-            if let selected {
-                ZStack(alignment: .bottomLeading) {
-                    artView(path: presentation?.artPath, id: selected.id)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .clipped()
-                    LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .center, endPoint: .bottom)
-                    VStack(alignment: .leading, spacing: 10) {
-                        if presentation?.isCustom == true { Text("CUSTOM GAME").font(.caption.bold()).foregroundStyle(.purple) }
-                        SkinTitleText(text: selected.name, size: 30).foregroundStyle(.white)
-                        if let desc = presentation?.description {
-                            Text(desc).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(3).frame(maxWidth: 440, alignment: .leading)
+    var body: some View {
+        // The real, root-cause fix for "sidebar mode is fullscreen and weird": the detail pane's art
+        // used `.frame(maxWidth: .infinity, maxHeight: .infinity)` around a `.aspectRatio(.fill)`
+        // image with nothing above this layout to pin a concrete bound in either axis (Grid gets one
+        // from its own `GeometryReader`; Shelves' hero stays bounded because it pins a *fixed*
+        // height, leaving only width flexible) - under a genuinely double-unbounded proposal, the
+        // image's own ideal-size negotiation runs away and starves its fixed-260-width sibling
+        // almost to nothing, which is exactly what a real screenshot showed: a hairline sliver of
+        // sidebar next to art filling the entire window edge-to-edge. A `GeometryReader` here gives
+        // every measurement a real, finite number to work from, the same fix already proven for the
+        // grid's own overlap bug.
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(entries) { entry in
+                            let isSelected = entry.id == (selectedID ?? entries.first?.id)
+                            HStack(spacing: 10) {
+                                SmallArtIcon(entry: entry, size: 26, cornerRadius: 6)
+                                Text(entry.name).lineLimit(1).fontWeight(isSelected ? .semibold : .regular)
+                                Spacer()
+                                if runningTracker.runningGames[entry.id] != nil { Circle().fill(.green).frame(width: 7, height: 7) }
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .background(isSelected ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 7))
+                            .padding(.horizontal, 8)
+                            .contentShape(Rectangle())
+                            .onTapGesture { selectedID = entry.id }
                         }
-                        Button("View Details") { onOpenDetail(selected) }.buttonStyle(.borderedProminent).controlSize(.large).padding(.top, 4)
                     }
-                    .padding(32)
+                    .padding(.vertical, 8)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .task(id: selected.id) { presentation = await LibraryPresentation.resolve(selected) }
-            } else {
-                Color.clear
+                .background(.regularMaterial)
+                .frame(width: Self.sidebarWidth, height: geo.size.height)
+
+                if let selected {
+                    ZStack(alignment: .bottomLeading) {
+                        artView(path: presentation?.artPath, id: selected.id)
+                            .frame(width: max(0, geo.size.width - Self.sidebarWidth), height: geo.size.height)
+                            .clipped()
+                        LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .center, endPoint: .bottom)
+                        VStack(alignment: .leading, spacing: 10) {
+                            if presentation?.isCustom == true { Text("CUSTOM GAME").font(.caption.bold()).foregroundStyle(.purple) }
+                            SkinTitleText(text: selected.name, size: 30).foregroundStyle(.white)
+                            if let desc = presentation?.description {
+                                Text(desc).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(3).frame(maxWidth: 440, alignment: .leading)
+                            }
+                            Button("View Details") { onOpenDetail(selected) }.buttonStyle(.borderedProminent).controlSize(.large).padding(.top, 4)
+                        }
+                        .padding(32)
+                    }
+                    .frame(width: max(0, geo.size.width - Self.sidebarWidth), height: geo.size.height)
+                    .clipped()
+                    .task(id: selected.id) { presentation = await LibraryPresentation.resolve(selected) }
+                } else {
+                    Color.clear.frame(width: max(0, geo.size.width - Self.sidebarWidth), height: geo.size.height)
+                }
             }
         }
     }
@@ -214,7 +251,7 @@ struct LibraryListLayout: View {
             ScrollView {
                 ForEach(entries) { entry in
                     HStack(spacing: 12) {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous).fill(placeholderTile(for: entry.id)).frame(width: 30, height: 30)
+                        SmallArtIcon(entry: entry, size: 30, cornerRadius: 6)
                         HStack(spacing: 6) {
                             Text(entry.name).font(.callout.weight(.medium))
                             if case .custom = entry { Text("CUSTOM").font(.caption2.bold()).foregroundStyle(.purple) }
@@ -290,59 +327,55 @@ struct LibraryCarouselLayout: View {
     private var focusedEntry: LibraryEntry? { entries.first { $0.id == focused } ?? entries.first }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 20) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 22) {
                     ForEach(entries) { entry in
                         let isFocused = entry.id == (focused ?? entries.first?.id)
                         LibraryEntryTile(entry: entry, width: isFocused ? 230 : 185, height: isFocused ? 300 : 240) {
-                            if isFocused { onOpenDetail(entry) } else { focused = entry.id }
+                            // Hover already sets focus for a real mouse/trackpad, so by the time a
+                            // click lands the tile is already focused and can open straight away -
+                            // "carasoul should track mouse focus," and this also fixes a genuine
+                            // click-swallowing bug the old two-step tap dance had: growing a tile on
+                            // its first tap reflows every tile after it in the row, so a *second*
+                            // click aimed at the same screen position could land on a neighbor that
+                            // had shifted into it instead of the now-larger focused tile.
+                            onOpenDetail(entry)
                         }
                         .scaleEffect(isFocused ? 1 : 0.96)
                         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: focused)
+                        .onHover { isHovering in
+                            if isHovering { focused = entry.id }
+                        }
                     }
                 }
                 .padding(.horizontal, 32).padding(.top, 20)
             }
-            if let focusedEntry, let desc = presentation?.description {
-                Text(desc).font(.body).foregroundStyle(.secondary).frame(maxWidth: 520, alignment: .leading).padding(.horizontal, 32)
-                    .task(id: focusedEntry.id) { presentation = await LibraryPresentation.resolve(focusedEntry) }
-            }
-            Spacer()
-        }
-    }
-}
-
-// MARK: - Layout F: Launchpad (bare icon grid)
-
-struct LibraryLaunchpadLayout: View {
-    let entries: [LibraryEntry]
-    let onOpenDetail: (LibraryEntry) -> Void
-    @ObservedObject private var runningTracker = RunningGameTracker.shared
-    @LocalState private var presentations: [String: LibraryPresentation] = [:]
-
-    var body: some View {
-        ScrollView {
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(120), spacing: 30), count: 8), spacing: 28) {
-                ForEach(entries) { entry in
-                    VStack(spacing: 8) {
-                        ZStack(alignment: .topTrailing) {
-                            artView(path: presentations[entry.id]?.artPath, id: entry.id)
-                                .frame(width: 84, height: 84)
-                                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                                .shadow(color: .black.opacity(0.28), radius: 8, y: 5)
-                            if runningTracker.runningGames[entry.id] != nil {
-                                Circle().fill(.green).frame(width: 13, height: 13).overlay(Circle().stroke(.white, lineWidth: 2)).offset(x: 4, y: -4)
-                            }
+            // A fixed-height reserved panel (not conditional on data already being loaded) so the
+            // row below never jumps when focus changes or while a fetch is in flight - and, unlike
+            // the version this replaced, the `.task` that actually fetches `presentation` is
+            // attached to a view that's *always* present, not one gated behind the very data it's
+            // supposed to produce. That inversion was a real deadlock: `if let desc =
+            // presentation?.description { Text(desc).task { presentation = ... } }` can never run
+            // its own fetch, because the `if` guarding it requires the fetch's result to already
+            // exist - so the info panel never appeared at all, for any game, ever.
+            Group {
+                if let focusedEntry {
+                    VStack(alignment: .leading, spacing: 6) {
+                        SkinTitleText(text: focusedEntry.name, size: 20)
+                        if let genre = presentation?.genre {
+                            Text(genre.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
                         }
-                        Text(entry.name).font(.caption.weight(.medium)).lineLimit(1).frame(width: 110)
+                        if let desc = presentation?.description {
+                            Text(desc).font(.body).foregroundStyle(.secondary).lineLimit(3).frame(maxWidth: 560, alignment: .leading)
+                        }
                     }
-                    .contentShape(Rectangle())
-                    .onTapGesture { onOpenDetail(entry) }
-                    .task(id: entry.id) { presentations[entry.id] = await LibraryPresentation.resolve(entry) }
+                    .task(id: focusedEntry.id) { presentation = await LibraryPresentation.resolve(focusedEntry) }
                 }
             }
-            .padding(40)
+            .frame(minHeight: 90, alignment: .top)
+            .padding(.horizontal, 32)
+            Spacer()
         }
     }
 }

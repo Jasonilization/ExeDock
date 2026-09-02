@@ -232,10 +232,13 @@ private struct SkinTint: ViewModifier {
 /// distinct navigation model, not a reskinned grid - researched against actual, proven app
 /// patterns before building: Steam's own current library (sidebar + tag-filtered grid), PS5/Xbox
 /// home screens (hero + horizontal shelves), Music.app (sidebar list + big detail pane), a plain
-/// dense table (Playnite's list mode), Apple TV's poster carousel, and macOS Launchpad's bare icon
-/// grid - "search actual game design... maybe just dont have cards," per live feedback.
+/// dense table (Playnite's list mode), and Apple TV's poster carousel - "search actual game
+/// design... maybe just dont have cards," per live feedback. A seventh, Launchpad-style bare icon
+/// grid was tried and removed: "the one with dense and only small icons have no art delete that
+/// one" - a dense grid of generic small icons was never going to read as a real, distinct design
+/// the way each of the remaining six genuinely does.
 enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
-    case grid, shelves, sidebar, list, steam, carousel, launchpad
+    case grid, shelves, sidebar, list, steam, carousel
     var id: String { rawValue }
 
     static let storageKey = "com.exedock.libraryLayout"
@@ -248,7 +251,6 @@ enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
         case .list: return "List"
         case .steam: return "Steam-style"
         case .carousel: return "Poster Carousel"
-        case .launchpad: return "Launchpad"
         }
     }
 
@@ -260,7 +262,6 @@ enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
         case .list: return "Dense table, no artwork"
         case .steam: return "Sidebar categories + poster grid"
         case .carousel: return "One row, focus scales up"
-        case .launchpad: return "Bare icon grid"
         }
     }
 }
