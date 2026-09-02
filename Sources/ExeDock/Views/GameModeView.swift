@@ -1720,6 +1720,7 @@ private struct DefaultSettingsSheet: View {
     @ObservedObject private var controllerObserver = ControllerObserver.shared
     @Binding var isAdvancedMode: Bool
     @LocalState private var focusedRow: SettingsRow?
+    @LocalState private var showingWizard = false
     @AppStorage(LibraryLayoutStyle.storageKey) private var libraryLayoutRaw = LibraryLayoutStyle.grid.rawValue
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw = PlaydockSkin.luxury.rawValue
     @AppStorage(PlaydockArtSource.storageKey) private var artSourceRaw = PlaydockArtSource.banner.rawValue
@@ -1769,9 +1770,17 @@ private struct DefaultSettingsSheet: View {
                 } header: {
                     Text("Library Look")
                 } footer: {
-                    Text((LibraryLayoutStyle(rawValue: libraryLayoutRaw) ?? .grid).subtitle + " · " + (PlaydockArtSource(rawValue: artSourceRaw) ?? .banner).subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text((LibraryLayoutStyle(rawValue: libraryLayoutRaw) ?? .grid).subtitle + " · " + (PlaydockArtSource(rawValue: artSourceRaw) ?? .banner).subtitle)
+                        Button("Run Setup Wizard Again") { showingWizard = true }
+                            .buttonStyle(.link)
+                            .font(.caption)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                .sheet(isPresented: $showingWizard) {
+                    SetupWizardView()
                 }
 
                 if isAdvancedMode {

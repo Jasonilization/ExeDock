@@ -50,6 +50,22 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
         }
     }
 
+    /// One plain line describing the look, for the setup wizard's picker - "make it less ai," so
+    /// these describe what's actually different (materials, shapes, mood) rather than reaching for
+    /// marketing language.
+    var blurb: String {
+        switch self {
+        case .luxury: return "Warm, understated, gold accents"
+        case .glass: return "Translucent panels, soft color"
+        case .brutalist: return "Bold blocks, hard offset shadows"
+        case .cyber: return "Dark, cut corners, neon accents"
+        case .soft: return "Rounded, gentle depth"
+        case .pixel: return "Retro, dotted grid, blocky"
+        case .console: return "Brushed metal, dashboard-like"
+        case .minimal: return "Plain, quiet, no decoration"
+        }
+    }
+
     var accent: Color {
         switch self {
         case .luxury: return Color(red: 0.69, green: 0.55, blue: 0.34)
@@ -116,8 +132,13 @@ struct SkinTitleText: View {
     let text: String
     var size: CGFloat = 17
     var lineLimit: Int? = 1
+    /// Renders in exactly this skin instead of the active one - only the setup wizard's
+    /// side-by-side skin picker needs this (showing several skins' real display faces at once,
+    /// none of them necessarily the currently-active one yet). Every existing call site leaves
+    /// this `nil` and keeps following the active skin exactly as before.
+    var skinOverride: PlaydockSkin?
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
-    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
+    private var skin: PlaydockSkin { skinOverride ?? (PlaydockSkin(rawValue: skinRaw) ?? .luxury) }
 
     var body: some View {
         Text(text)
@@ -179,8 +200,11 @@ private func hardShadowColor(for skin: PlaydockSkin) -> Color? {
 
 private struct CardSurface: ViewModifier {
     var isHovering: Bool = false
+    /// See `SkinTitleText.skinOverride` - same reason, same "every real call site leaves it nil"
+    /// contract.
+    var skinOverride: PlaydockSkin?
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
-    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
+    private var skin: PlaydockSkin { skinOverride ?? (PlaydockSkin(rawValue: skinRaw) ?? .luxury) }
 
     /// The soft-shadow neumorphic highlight, precomputed as its own small view (not an inline `if`
     /// inside the main chain) - Swift's type checker genuinely cannot solve this many chained
@@ -256,8 +280,11 @@ private struct CardSurface: ViewModifier {
 
 private struct TileSurface: ViewModifier {
     var isHovering: Bool = false
+    /// See `SkinTitleText.skinOverride` - same reason, same "every real call site leaves it nil"
+    /// contract.
+    var skinOverride: PlaydockSkin?
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
-    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
+    private var skin: PlaydockSkin { skinOverride ?? (PlaydockSkin(rawValue: skinRaw) ?? .luxury) }
 
     @ViewBuilder
     private func hardShadowTwin(shape: PlaydockCardShape, color: Color?, offset: CGFloat) -> some View {
@@ -307,8 +334,11 @@ struct PlaydockButtonStyle: ButtonStyle {
     /// `true` for a primary action (View Details/Launch - filled, accent-colored); `false` for a
     /// secondary control (prev/next nav - outlined, quieter).
     var prominent: Bool = true
+    /// See `SkinTitleText.skinOverride` - same reason, same "every real call site leaves it nil"
+    /// contract.
+    var skinOverride: PlaydockSkin?
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
-    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
+    private var skin: PlaydockSkin { skinOverride ?? (PlaydockSkin(rawValue: skinRaw) ?? .luxury) }
 
     func makeBody(configuration: Configuration) -> some View {
         let shape = PlaydockCardShape(skin: skin, cornerRadius: min(skin.cardRadius, 12))
@@ -375,8 +405,8 @@ extension View {
     /// icon tiles) - just the skin's corner radius, border, and shadow, with no material fill
     /// layered on top of real artwork the way a content card needs. Reads the same `PlaydockSkin`
     /// so every layout's tiles restyle together with the grid's own cards.
-    func tileSurface(isHovering: Bool = false) -> some View {
-        modifier(TileSurface(isHovering: isHovering))
+    func tileSurface(isHovering: Bool = false, skinOverride: PlaydockSkin? = nil) -> some View {
+        modifier(TileSurface(isHovering: isHovering, skinOverride: skinOverride))
     }
 }
 
@@ -387,8 +417,8 @@ extension View {
     /// with a genuine lift on hover, matching real game-library card conventions instead of a flat,
     /// borderless rectangle with no depth. Reads the active `PlaydockSkin` itself, so every card
     /// everywhere restyles together the instant the skin setting changes.
-    func cardSurface(isHovering: Bool = false) -> some View {
-        modifier(CardSurface(isHovering: isHovering))
+    func cardSurface(isHovering: Bool = false, skinOverride: PlaydockSkin? = nil) -> some View {
+        modifier(CardSurface(isHovering: isHovering, skinOverride: skinOverride))
     }
 
     /// Applies just the skin's accent color and font design, for non-card surfaces (headers,
@@ -442,6 +472,21 @@ enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
         case .steam: return "Sidebar categories + poster grid"
         case .carousel: return "One row, focus scales up"
         case .spotlight: return "One game up close, browsable, + a grid"
+        }
+    }
+
+    /// A plain SF Symbol standing in for each layout's real shape - used wherever a layout needs
+    /// to be picked from a short list without rendering the whole thing (the setup wizard's own
+    /// picker), not a substitute for actually seeing it.
+    var iconName: String {
+        switch self {
+        case .grid: return "square.grid.2x2"
+        case .shelves: return "rectangle.grid.1x2"
+        case .sidebar: return "sidebar.left"
+        case .list: return "list.bullet"
+        case .steam: return "square.grid.3x3.square"
+        case .carousel: return "rectangle.stack"
+        case .spotlight: return "star.square.on.square"
         }
     }
 }
