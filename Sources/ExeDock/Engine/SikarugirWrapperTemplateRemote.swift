@@ -14,23 +14,30 @@ enum SikarugirWrapperTemplateRemoteError: Error, LocalizedError {
 
 /// Downloads the same public, blank wrapper-app "Template" Sikarugir Creator itself builds every
 /// wrapper app from - the real, public `Sikarugir-App/Wrapper` GitHub release, the exact same
-/// trusted org/pattern `SikarugirEnginesRemote` already uses for engines - purely to get at its
-/// `Contents/Frameworks` folder (the ~50 shared macOS runtime libraries wine itself needs at
-/// runtime, confirmed present in a real downloaded copy of this exact template).
+/// trusted org/pattern `SikarugirEnginesRemote` already uses for engines - to get at two things a
+/// genuinely fresh install (the DMG alone, nothing else ever installed) needs and would otherwise
+/// have no local source for at all:
 ///
-/// This is what lets a genuinely fresh install - the DMG alone, nothing else ever installed - finish
-/// Playdock's own automatic setup with no separate app and no manual "build a wrapper first" step:
-/// previously, `SikarugirEngine.ensureFrameworksAvailable()` could only ever find this payload by
-/// copying it from an *existing* Sikarugir wrapper app already on the Mac, which a brand-new user
+/// - `Contents/Frameworks` - the ~50 shared macOS runtime libraries wine itself needs at runtime.
+/// - `Contents/Configure.app` - a real, working copy of Sikarugir's own Configure app, confirmed
+///   (by downloading and inspecting a real copy of this exact template) to be the same blank
+///   Configure.app every built wrapper ships - kept so `ConfigureShellBuilder` can give Playdock's
+///   own bottles the same reliable, Configure-driven launch path a Sikarugir Creator wrapper
+///   already gets, with zero extra setup for anyone - see that file's own doc comment for why.
+///
+/// This is what lets first launch finish with no separate app and no manual "build a wrapper first"
+/// step: previously, `SikarugirEngine.ensureFrameworksAvailable()` could only ever find this payload
+/// by copying it from an *existing* Sikarugir wrapper app already on the Mac, which a brand-new user
 /// simply wouldn't have - dead-ending first launch with an error asking them to go do something in a
 /// completely separate app they've never heard of.
 enum SikarugirWrapperTemplateRemote {
     private static let releasesURL = URL(string: "https://api.github.com/repos/Sikarugir-App/Wrapper/releases/latest")!
 
-    /// Downloads the template tarball and extracts just its own `<Name>.app/Contents/Frameworks`
-    /// directory into `destinationDir`, replacing anything already there. Cleans up its own
-    /// temporary files regardless of outcome; never touches anything outside ExeDock's own support
-    /// directory.
+    /// Downloads the template tarball and extracts its `Contents/Frameworks` directory into
+    /// `destinationDir` and its `Contents/Configure.app` into
+    /// `SikarugirEngine.exeDockConfigureTemplatePath` (replacing anything already at either).
+    /// Cleans up its own temporary files regardless of outcome; never touches anything outside
+    /// ExeDock's own support directory.
     static func downloadFrameworks(into destinationDir: String, progress: @escaping (String) -> Void) async throws {
         progress("Looking for Playdock's runtime libraries…")
         let result: (data: Data, response: URLResponse)
@@ -102,7 +109,8 @@ enum SikarugirWrapperTemplateRemote {
               let appName = entries.first(where: { $0.hasSuffix(".app") }) else {
             throw EngineError.missingSharedLibraries
         }
-        let sourceFrameworks = (stagingDir as NSString).appendingPathComponent(appName) + "/Contents/Frameworks"
+        let templateAppPath = (stagingDir as NSString).appendingPathComponent(appName)
+        let sourceFrameworks = templateAppPath + "/Contents/Frameworks"
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: sourceFrameworks, isDirectory: &isDir), isDir.boolValue else {
             throw EngineError.missingSharedLibraries
@@ -110,6 +118,17 @@ enum SikarugirWrapperTemplateRemote {
 
         try? fm.removeItem(atPath: destinationDir)
         try fm.moveItem(atPath: sourceFrameworks, toPath: destinationDir)
+
+        // Configure.app is a nice-to-have, not required for Frameworks (the thing this function is
+        // actually named for and always must succeed at) to count as done - a missing/mismatched
+        // Configure.app here just means `ConfigureShellBuilder` falls back to the CLI/direct-wine
+        // launch path later, exactly like it already does for a bottle with no shell at all.
+        let sourceConfigure = templateAppPath + "/Contents/Configure.app"
+        if fm.fileExists(atPath: sourceConfigure, isDirectory: &isDir), isDir.boolValue {
+            try? fm.removeItem(atPath: SikarugirEngine.exeDockConfigureTemplatePath)
+            try? fm.copyItem(atPath: sourceConfigure, toPath: SikarugirEngine.exeDockConfigureTemplatePath)
+        }
+
         progress("Playdock's runtime libraries are ready.")
         DiagnosticsLog.log("Wrapper template: installed runtime libraries from \(chosen.name)")
     }

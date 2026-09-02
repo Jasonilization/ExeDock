@@ -28,6 +28,11 @@ enum SikarugirEngine {
     /// tar cost) something it already has ready to go.
     static let legacyExtractedEngineDir = (exeDockSupportDir as NSString).appendingPathComponent("Engine")
     static let exeDockFrameworksDir = (exeDockSupportDir as NSString).appendingPathComponent("Frameworks")
+    /// A cached, working copy of Sikarugir's own blank Configure.app (see
+    /// `SikarugirWrapperTemplateRemote`'s doc comment for where this comes from) - `ConfigureShellBuilder`
+    /// copies from here to give each of Playdock's own bottles the same Configure-driven launch path
+    /// a real Sikarugir Creator wrapper already has.
+    static let exeDockConfigureTemplatePath = (exeDockSupportDir as NSString).appendingPathComponent("ConfigureTemplate.app")
 
     /// Each named engine gets its own extraction cache (`Engine-<name>`) so ExeDock can hold more
     /// than one ready at once - needed both for the engine picker (switching without re-extracting
@@ -175,6 +180,15 @@ enum SikarugirEngine {
         prepLock.lock()
         defer { prepLock.unlock() }
         let fm = FileManager.default
+        // Best-effort and independent of the frameworks marker below on purpose: an install that
+        // already had its Frameworks copy set up *before* `ConfigureShellBuilder` existed would
+        // otherwise never take this path again and so never get a Configure template cached at all
+        // - this same cheap check just runs every time instead, a no-op once it's actually there.
+        if !fm.fileExists(atPath: exeDockConfigureTemplatePath), let sourceConfigure = try? findWrapperConfigureApp() {
+            try? fm.createDirectory(atPath: exeDockSupportDir, withIntermediateDirectories: true)
+            try? fm.copyItem(atPath: sourceConfigure, toPath: exeDockConfigureTemplatePath)
+        }
+
         if fm.fileExists(atPath: frameworksReadyMarkerPath) {
             return exeDockFrameworksDir
         }
@@ -214,6 +228,26 @@ enum SikarugirEngine {
             var isDir: ObjCBool = false
             if fm.fileExists(atPath: frameworksPath, isDirectory: &isDir), isDir.boolValue {
                 return frameworksPath
+            }
+        }
+        throw EngineError.missingSharedLibraries
+    }
+
+    /// A real, working Configure.app from any already-installed Sikarugir wrapper - read-only
+    /// source, only ever copied from, exactly like `findWrapperFrameworksDir` above. Feeds
+    /// `ConfigureShellBuilder`'s local-copy fast path (see `ensureFrameworksAvailable`'s own call
+    /// site) so an existing user who already has a wrapper on this Mac gets Playdock's own bottles
+    /// upgraded to the same reliable launch path too, not only a brand-new install going through
+    /// `SikarugirWrapperTemplateRemote`'s network download.
+    private static func findWrapperConfigureApp() throws -> String {
+        let fm = FileManager.default
+        let root = ("~/Applications/Sikarugir" as NSString).expandingTildeInPath
+        guard let apps = try? fm.contentsOfDirectory(atPath: root) else { throw EngineError.missingSharedLibraries }
+        for app in apps where app.hasSuffix(".app") {
+            let configurePath = (root as NSString).appendingPathComponent(app) + "/Contents/Configure.app"
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: configurePath, isDirectory: &isDir), isDir.boolValue {
+                return configurePath
             }
         }
         throw EngineError.missingSharedLibraries

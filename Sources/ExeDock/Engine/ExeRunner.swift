@@ -91,6 +91,26 @@ enum ExeRunner {
         if !bottle.isReadOnly {
             try BottleManager.shared.ensureInitialized(bottle, wineBinary: wineBinary)
         }
+
+        // Playdock's own bottle (every custom game, and Steam) never had this same reliable path -
+        // only a bottle discovered inside a *separately built* Sikarugir wrapper did.
+        // `ConfigureShellBuilder` gives it the identical shape Configure itself looks for (confirmed
+        // against Configure's own binary strings and a real downloaded copy of Sikarugir's public
+        // wrapper template - see its own doc comment), built automatically from a file Playdock
+        // already downloads during first-launch setup - no manual step for anyone, and no risk to a
+        // launch that already worked: any failure here just falls through to the exact same
+        // CLI/direct-wine chain used before this existed. Deliberately placed *after*
+        // `ensureInitialized` just above - Configure driving a bottle that doesn't have a real,
+        // wineboot-initialized prefix yet isn't a scenario worth risking.
+        if !bottle.isReadOnly, let shellPath = ConfigureShellBuilder.shellAppPath(forLaunching: bottle, wineBinaryPath: wineBinary) {
+            do {
+                try await SikarugirConfigureLauncher.launch(exePath: exePath, wrapperAppPath: shellPath, driveCPath: bottle.driveCPath)
+                return nil
+            } catch {
+                DiagnosticsLog.log("Configure-driven launch failed for \(baseName) in \(bottle.name): \(error.localizedDescription) - falling back.")
+            }
+        }
+
         let libraryPath: String
         if let wrapperEngine {
             // Must be paired with the *same* app's own lib/Frameworks - mixing a wrapper's wine
