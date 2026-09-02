@@ -247,6 +247,34 @@ enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// Which real art a card/tile shows for a Steam game - "have the option to use either the app icon
+/// or the banner for the main art on boxes," per live feedback, after "the UI for the other ones...
+/// all the games are cropped" turned out to be a real, fixable gap: every portrait-shaped tile
+/// (Carousel, Steam-style, List/Sidebar's small icons) was force-cropping the landscape
+/// `header.jpg` banner rather than using Steam's own real, *native* portrait box art
+/// (`library_600x900.jpg`, cached locally by the real Steam client - see `SteamLibraryCache`).
+/// `.banner` keeps the existing landscape header everywhere (matches the mockups' own card shape);
+/// `.boxArt` uses Steam's native portrait art where a game has it cached, falling back to the
+/// banner for anything Steam hasn't cached yet (never viewed in Steam's own library) or a custom
+/// game (no Steam cache to read at all).
+enum PlaydockArtSource: String, CaseIterable, Identifiable {
+    case banner, boxArt
+    var id: String { rawValue }
+    static let storageKey = "com.exedock.artSource"
+    var displayName: String {
+        switch self {
+        case .banner: return "Banner"
+        case .boxArt: return "Box Art"
+        }
+    }
+    var subtitle: String {
+        switch self {
+        case .banner: return "Steam's landscape store banner"
+        case .boxArt: return "Steam's native portrait box art, where cached"
+        }
+    }
+}
+
 /// A game card's "this is running right now" state - a plain static status tag with a soft
 /// breathing pulse on the dot, not a live-ticking elapsed-time counter. Deliberately dropped the
 /// minute counter this replaced: "running status not very good... 0m never actually changes," per

@@ -12,13 +12,40 @@ struct LibraryPresentation {
     let description: String?
     let isCustom: Bool
 
-    static func resolve(_ entry: LibraryEntry) async -> LibraryPresentation {
+    /// What shape of tile is asking - "the UI for the other ones... all the games are cropped,"
+    /// per live feedback: every portrait/square tile was force-cropping the landscape store banner
+    /// because portrait/square art was never looked for at all. Each call site says its own real
+    /// shape so this can hand back whatever Steam actually has cached that fits it, instead of one
+    /// art path everyone force-fits.
+    enum Shape {
+        case landscape, portrait, square
+    }
+
+    static func resolve(_ entry: LibraryEntry, shape: Shape = .landscape) async -> LibraryPresentation {
         switch entry {
         case .custom(let game):
             return LibraryPresentation(artPath: game.effectiveArtworkPath, genre: game.discovered.steamGenres.first, description: game.effectiveDescription, isCustom: true)
         case .steam(let game):
             let info = await SteamStoreInfoCache.shared.info(for: game.metadataAppID)
-            return LibraryPresentation(artPath: info?.headerImagePath, genre: info?.genres.first, description: info?.shortDescription, isCustom: false)
+            return LibraryPresentation(artPath: preferredArtPath(appID: game.metadataAppID, shape: shape, bannerPath: info?.headerImagePath), genre: info?.genres.first, description: info?.shortDescription, isCustom: false)
+        }
+    }
+
+    /// Applies the user's `PlaydockArtSource` choice for a Steam game - Steam's own real, natively-
+    /// shaped art (portrait box art, or a real square icon) when set to `.boxArt` and actually
+    /// cached locally, falling back to the landscape banner otherwise (a game Steam hasn't cached
+    /// that shape for yet, the setting is `.banner`, or this call site wants landscape anyway, which
+    /// the banner already natively is).
+    private static func preferredArtPath(appID: String, shape: Shape, bannerPath: String?) -> String? {
+        let source = PlaydockArtSource(rawValue: UserDefaults.standard.string(forKey: PlaydockArtSource.storageKey) ?? "") ?? .banner
+        guard source == .boxArt else { return bannerPath }
+        switch shape {
+        case .landscape:
+            return bannerPath
+        case .portrait:
+            return SteamLibraryCache.portraitArtPath(appID: appID) ?? bannerPath
+        case .square:
+            return SteamLibraryCache.iconPath(appID: appID) ?? bannerPath
         }
     }
 }
@@ -61,7 +88,7 @@ private struct SmallArtIcon: View {
         artView(path: presentation?.artPath, id: entry.id)
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .task(id: entry.id) { presentation = await LibraryPresentation.resolve(entry) }
+            .task(id: entry.id) { presentation = await LibraryPresentation.resolve(entry, shape: .square) }
     }
 }
 
@@ -71,6 +98,11 @@ private struct LibraryEntryTile: View {
     let entry: LibraryEntry
     let width: CGFloat
     let height: CGFloat
+    /// The real shape this tile actually is - Shelves' shelf rows are landscape (190x105), Steam-
+    /// style/Carousel tiles are portrait (154x210, 185x300) - `LibraryPresentation.resolve` uses
+    /// this to hand back whichever real Steam art actually fits instead of one shape everyone
+    /// force-crops.
+    var artShape: LibraryPresentation.Shape = .landscape
     let onOpen: () -> Void
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     @LocalState private var presentation: LibraryPresentation?
@@ -94,7 +126,7 @@ private struct LibraryEntryTile: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { onOpen() }
-        .task(id: entry.id) { presentation = await LibraryPresentation.resolve(entry) }
+        .task(id: entry.id) { presentation = await LibraryPresentation.resolve(entry, shape: artShape) }
     }
 }
 
@@ -307,7 +339,7 @@ struct LibrarySteamStyleLayout: View {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 170), spacing: 12)], spacing: 12) {
                     ForEach(filtered) { entry in
-                        LibraryEntryTile(entry: entry, width: 154, height: 210) { onOpenDetail(entry) }
+                        LibraryEntryTile(entry: entry, width: 154, height: 210, artShape: .portrait) { onOpenDetail(entry) }
                     }
                 }
                 .padding(18)
@@ -332,7 +364,7 @@ struct LibraryCarouselLayout: View {
                 HStack(spacing: 22) {
                     ForEach(entries) { entry in
                         let isFocused = entry.id == (focused ?? entries.first?.id)
-                        LibraryEntryTile(entry: entry, width: isFocused ? 230 : 185, height: isFocused ? 300 : 240) {
+                        LibraryEntryTile(entry: entry, width: isFocused ? 230 : 185, height: isFocused ? 300 : 240, artShape: .portrait) {
                             // Hover already sets focus for a real mouse/trackpad, so by the time a
                             // click lands the tile is already focused and can open straight away -
                             // "carasoul should track mouse focus," and this also fixes a genuine

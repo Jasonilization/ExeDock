@@ -1721,6 +1721,7 @@ private struct DefaultSettingsSheet: View {
     @LocalState private var focusedRow: SettingsRow?
     @AppStorage(LibraryLayoutStyle.storageKey) private var libraryLayoutRaw = LibraryLayoutStyle.grid.rawValue
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw = PlaydockSkin.luxury.rawValue
+    @AppStorage(PlaydockArtSource.storageKey) private var artSourceRaw = PlaydockArtSource.banner.rawValue
 
     private func isFocused(_ row: SettingsRow) -> Bool {
         controllerObserver.isConnected && focusedRow == row
@@ -1759,10 +1760,15 @@ private struct DefaultSettingsSheet: View {
                             Text(skin.displayName).tag(skin.rawValue)
                         }
                     }
+                    Picker("Card Art", selection: $artSourceRaw) {
+                        ForEach(PlaydockArtSource.allCases) { source in
+                            Text(source.displayName).tag(source.rawValue)
+                        }
+                    }
                 } header: {
                     Text("Library Look")
                 } footer: {
-                    Text((LibraryLayoutStyle(rawValue: libraryLayoutRaw) ?? .grid).subtitle)
+                    Text((LibraryLayoutStyle(rawValue: libraryLayoutRaw) ?? .grid).subtitle + " · " + (PlaydockArtSource(rawValue: artSourceRaw) ?? .banner).subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1827,7 +1833,7 @@ private struct DefaultSettingsSheet: View {
             }
             .formStyle(.grouped)
         }
-        .frame(width: 420, height: isAdvancedMode ? 680 : 460)
+        .frame(width: 420, height: isAdvancedMode ? 710 : 490)
         .animation(.easeInOut(duration: 0.2), value: isAdvancedMode)
     }
 }
