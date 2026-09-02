@@ -172,7 +172,7 @@ struct LibraryShelvesLayout: View {
                             if let desc = featuredPresentation?.description {
                                 Text(desc).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(2).frame(maxWidth: 460, alignment: .leading)
                             }
-                            Button("View Details") { onOpenDetail(featured) }.buttonStyle(.borderedProminent).controlSize(.large).padding(.top, 4)
+                            Button("View Details") { onOpenDetail(featured) }.buttonStyle(PlaydockButtonStyle())
                         }
                         .padding(32)
                         if entries.count > 1 {
@@ -284,7 +284,7 @@ struct LibrarySidebarLayout: View {
                             if let desc = presentation?.description {
                                 Text(desc).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(3).frame(maxWidth: 440, alignment: .leading)
                             }
-                            Button("View Details") { onOpenDetail(selected) }.buttonStyle(.borderedProminent).controlSize(.large).padding(.top, 4)
+                            Button("View Details") { onOpenDetail(selected) }.buttonStyle(PlaydockButtonStyle())
                         }
                         .padding(32)
                     }
@@ -501,7 +501,7 @@ struct LibrarySpotlightLayout: View {
                                 Text(desc).font(.body).foregroundStyle(.secondary).lineLimit(4).frame(maxWidth: 480, alignment: .leading)
                             }
                             HStack(spacing: 14) {
-                                Button("View Details") { onOpenDetail(featured) }.buttonStyle(.borderedProminent).controlSize(.large)
+                                Button("View Details") { onOpenDetail(featured) }.buttonStyle(PlaydockButtonStyle())
                                 if entries.count > 1 {
                                     HStack(spacing: 8) {
                                         spotlightNavButton("chevron.left") { cycleFeatured(by: -1) }
@@ -536,7 +536,6 @@ struct LibrarySpotlightLayout: View {
         Button(action: action) {
             Image(systemName: systemImage).font(.callout.weight(.semibold)).frame(width: 28, height: 28)
         }
-        .buttonStyle(.bordered)
-        .clipShape(Circle())
+        .buttonStyle(PlaydockButtonStyle(prominent: false))
     }
 }

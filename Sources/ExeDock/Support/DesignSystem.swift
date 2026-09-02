@@ -298,6 +298,78 @@ private struct TileSurface: ViewModifier {
     }
 }
 
+/// A real, per-skin button treatment - "for the softUI etc, it should be like the same design for
+/// the buttons too," per live feedback: `cardSurface()`/`tileSurface()` got genuine per-skin craft
+/// (Cyber's cut corners, Brutalist/Pixel's hard shadow, Soft's neumorphic highlight) while every
+/// native button (View Details, Launch, prev/next) stayed a plain, unthemed `.borderedProminent`
+/// regardless of skin. Same shape/shadow language as the cards, applied to buttons.
+struct PlaydockButtonStyle: ButtonStyle {
+    /// `true` for a primary action (View Details/Launch - filled, accent-colored); `false` for a
+    /// secondary control (prev/next nav - outlined, quieter).
+    var prominent: Bool = true
+    @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
+    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = PlaydockCardShape(skin: skin, cornerRadius: min(skin.cardRadius, 12))
+        let hardShadow: Color? = hardShadowColor(for: skin)
+        let isPressed = configuration.isPressed
+        let isSoft = skin == .soft
+
+        let fill: AnyShapeStyle
+        let labelColor: Color
+        if !prominent {
+            fill = AnyShapeStyle(Color.clear)
+            labelColor = skin.accent
+        } else if hardShadow != nil {
+            fill = AnyShapeStyle(Color.primary.opacity(0.001)) // stays hit-testable; real fill is .background below
+            labelColor = .primary
+        } else if skin == .console {
+            fill = AnyShapeStyle(LinearGradient(colors: [skin.accent.opacity(0.95), skin.accent], startPoint: .top, endPoint: .bottom))
+            labelColor = .black
+        } else if skin == .glass {
+            fill = AnyShapeStyle(.ultraThinMaterial)
+            labelColor = .primary
+        } else if isSoft {
+            fill = AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
+            labelColor = skin.accent
+        } else {
+            fill = AnyShapeStyle(skin.accent)
+            labelColor = .white
+        }
+
+        let borderColor: Color = prominent ? (hardShadow ?? .clear) : skin.accent.opacity(0.5)
+        let borderWidth: CGFloat = prominent ? (hardShadow != nil ? skin.borderWidth : 0) : 1.5
+        let pressOffset: CGFloat = (hardShadow != nil && isPressed) ? 4 : 0
+
+        return configuration.label
+            .font(.callout.weight(.semibold))
+            .fontDesign(skin.fontDesign)
+            .foregroundStyle(labelColor)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .background(fill, in: shape)
+            // Soft UI's real neumorphic raised/pressed toggle - inset shadow when pressed, raised
+            // dual-shadow otherwise, matching cardSurface()'s own treatment.
+            .background(alignment: .center) {
+                if isSoft && !isPressed {
+                    shape.fill(Color.black.opacity(0.12)).offset(x: 3, y: 3).blur(radius: 4)
+                }
+            }
+            .overlay(shape.strokeBorder(borderColor, lineWidth: borderWidth))
+            .clipShape(shape)
+            .background(alignment: .center) {
+                if let hardShadow {
+                    shape.fill(hardShadow).offset(x: pressOffset == 0 ? 5 : 1, y: pressOffset == 0 ? 5 : 1)
+                }
+            }
+            .offset(x: pressOffset, y: pressOffset)
+            .shadow(color: isPressed ? .clear : Color.black.opacity(skin.hasShadow ? 0.18 : 0), radius: 6, y: 3)
+            .scaleEffect(isPressed && hardShadow == nil ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.1), value: isPressed)
+    }
+}
+
 extension View {
     /// A lighter version of `cardSurface()` for a raw art tile (the new library layouts' poster/
     /// icon tiles) - just the skin's corner radius, border, and shadow, with no material fill
