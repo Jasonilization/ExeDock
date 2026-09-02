@@ -804,6 +804,7 @@ struct GameModeView: View {
         case .list: LibraryListLayout(entries: libraryEntries, onOpenDetail: openDetail)
         case .steam: LibrarySteamStyleLayout(entries: libraryEntries, onOpenDetail: openDetail)
         case .carousel: LibraryCarouselLayout(entries: libraryEntries, onOpenDetail: openDetail)
+        case .spotlight: LibrarySpotlightLayout(entries: libraryEntries, onOpenDetail: openDetail)
         }
     }
 

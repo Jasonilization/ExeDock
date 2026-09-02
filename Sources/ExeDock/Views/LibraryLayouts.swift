@@ -447,3 +447,96 @@ struct LibraryCarouselLayout: View {
         }
     }
 }
+
+// MARK: - Layout F: Spotlight (magazine-style feature + grid, real per-skin craft)
+
+/// The structure behind the web-rendered Editorial *skin* that impressed live - "damn i love the
+/// editorial appearence. make it into a layout one and make sure every other appearence is able to
+/// be the same quality in the skin for the editorial layout" - split out as a real, independent
+/// *layout* (this file's usual axis: structure, not look) so any of the ten skins can use it, not
+/// just Editorial's own CSS. Uses the same `cardSurface()`/`tileSurface()`/`SkinTitleText`/
+/// `SkinBackground` machinery every other layout here already does, so it inherits the exact same
+/// real per-skin card craft (Cyber's cut corners, Brutalist/Pixel's hard shadow, Soft's neumorphic
+/// highlight, Glass/Vapor's translucency) rather than being tied to one skin's own look.
+struct LibrarySpotlightLayout: View {
+    let entries: [LibraryEntry]
+    let onOpenDetail: (LibraryEntry) -> Void
+    @ObservedObject private var runningTracker = RunningGameTracker.shared
+    @LocalState private var featuredPresentation: LibraryPresentation?
+    /// Sticks once someone browses manually - see `LibraryShelvesLayout`'s identical field for why.
+    @LocalState private var manualFeaturedID: String?
+
+    private var featured: LibraryEntry? {
+        if let manualFeaturedID, let match = entries.first(where: { $0.id == manualFeaturedID }) { return match }
+        return runningTracker.runningGames.keys.first.flatMap { id in entries.first { $0.id == id } } ?? entries.first
+    }
+    private var rest: [LibraryEntry] {
+        guard let featured else { return entries }
+        return entries.filter { $0.id != featured.id }
+    }
+    private var featuredIndex: Int {
+        guard let featured else { return 0 }
+        return (entries.firstIndex(where: { $0.id == featured.id }) ?? 0) + 1
+    }
+
+    private func cycleFeatured(by delta: Int) {
+        guard let featured, let currentIndex = entries.firstIndex(where: { $0.id == featured.id }), !entries.isEmpty else { return }
+        let newIndex = (currentIndex + delta + entries.count) % entries.count
+        manualFeaturedID = entries[newIndex].id
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 32) {
+                if let featured {
+                    HStack(alignment: .center, spacing: 36) {
+                        artView(path: featuredPresentation?.artPath, id: featured.id)
+                            .frame(width: 420, height: 260)
+                            .tileSurface()
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(runningTracker.runningGames[featured.id] != nil ? "CURRENTLY PLAYING" : "FEATURED")
+                                .font(.caption.weight(.bold)).foregroundStyle(Color.accentColor)
+                            SkinTitleText(text: featured.name, size: 38)
+                            if let desc = featuredPresentation?.description {
+                                Text(desc).font(.body).foregroundStyle(.secondary).lineLimit(4).frame(maxWidth: 480, alignment: .leading)
+                            }
+                            HStack(spacing: 14) {
+                                Button("View Details") { onOpenDetail(featured) }.buttonStyle(.borderedProminent).controlSize(.large)
+                                if entries.count > 1 {
+                                    HStack(spacing: 8) {
+                                        spotlightNavButton("chevron.left") { cycleFeatured(by: -1) }
+                                        Text("\(featuredIndex) / \(entries.count)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                                        spotlightNavButton("chevron.right") { cycleFeatured(by: 1) }
+                                    }
+                                }
+                            }
+                            .padding(.top, 4)
+                        }
+                    }
+                    .padding(32)
+                    .task(id: featured.id) { featuredPresentation = await LibraryPresentation.resolve(featured) }
+                }
+                if !rest.isEmpty {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("ALSO IN YOUR COLLECTION").font(.caption.weight(.bold)).foregroundStyle(.secondary).padding(.horizontal, 32)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 200, maximum: 240), spacing: 20)], spacing: 24) {
+                            ForEach(rest) { entry in
+                                LibraryEntryTile(entry: entry, width: 210, height: 130) { onOpenDetail(entry) }
+                            }
+                        }
+                        .padding(.horizontal, 32)
+                    }
+                }
+            }
+            .padding(.bottom, 40)
+        }
+    }
+
+    private func spotlightNavButton(_ systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage).font(.callout.weight(.semibold)).frame(width: 28, height: 28)
+        }
+        .buttonStyle(.bordered)
+        .clipShape(Circle())
+    }
+}

@@ -345,7 +345,7 @@ private struct SkinTint: ViewModifier {
 /// one" - a dense grid of generic small icons was never going to read as a real, distinct design
 /// the way each of the remaining six genuinely does.
 enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
-    case grid, shelves, sidebar, list, steam, carousel
+    case grid, shelves, sidebar, list, steam, carousel, spotlight
     var id: String { rawValue }
 
     static let storageKey = "com.exedock.libraryLayout"
@@ -358,6 +358,7 @@ enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
         case .list: return "List"
         case .steam: return "Steam-style"
         case .carousel: return "Poster Carousel"
+        case .spotlight: return "Spotlight"
         }
     }
 
@@ -369,6 +370,7 @@ enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
         case .list: return "Dense table, no artwork"
         case .steam: return "Sidebar categories + poster grid"
         case .carousel: return "One row, focus scales up"
+        case .spotlight: return "One game up close, browsable, + a grid"
         }
     }
 }
