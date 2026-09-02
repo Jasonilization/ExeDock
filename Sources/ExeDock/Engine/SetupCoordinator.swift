@@ -40,15 +40,39 @@ final class SetupCoordinator: ObservableObject {
     @Published var stage: SetupStage = .checking
 
     private var pollTask: Task<Void, Never>?
+    /// Started as early as possible - right alongside whichever engine-acquisition path gets taken,
+    /// not only once the engine itself is already ready - since the engine (from
+    /// `Sikarugir-App/Engines`) and the runtime libraries (from `Sikarugir-App/Wrapper`) are two
+    /// genuinely independent downloads from separate GitHub releases with no data dependency on
+    /// each other; only bottle init at the very end actually needs both finished. Running them
+    /// concurrently instead of strictly one-after-the-other measurably shortens a brand-new user's
+    /// very first launch - "make sure installation... does it FAST," per live feedback. Kept as a
+    /// stored `Task` (not just called inline) specifically so it can be *started* here and *awaited*
+    /// later in `ensureDefaultBottleReady()`, rather than those two things happening at the same
+    /// call site the way a plain `await` would force.
+    private var frameworksTask: Task<Void, Error>?
 
     func runSetup() {
         pollTask?.cancel()
+        // A genuinely fresh start (first launch, or "Check Again" after a failure) - if the
+        // previous attempt's frameworks task already failed (a real, live bug this guarded
+        // against: reusing a failed `Task` just re-throws the same cached error forever, so
+        // "Check Again" could never recover the runtime-libraries half even once the network came
+        // back), this must start a brand new one rather than re-awaiting the dead one.
+        frameworksTask = nil
+        startFrameworksTaskIfNeeded()
         pollTask = Task { await performSetup() }
+    }
+
+    private func startFrameworksTaskIfNeeded() {
+        guard frameworksTask == nil else { return }
+        frameworksTask = Task { try await self.ensureRuntimeFrameworksReadyWork() }
     }
 
     /// Called from the setup screen when more than one engine was offered and the user picked one.
     func chooseEngine(_ name: String) {
         pollTask?.cancel()
+        startFrameworksTaskIfNeeded()
         pollTask = Task { await extractAndContinue(engineName: name) }
     }
 
@@ -148,8 +172,12 @@ final class SetupCoordinator: ObservableObject {
     }
 
     private func ensureDefaultBottleReady(engineName: String? = nil) async {
+        startFrameworksTaskIfNeeded()
         do {
-            try await ensureRuntimeFrameworksReady()
+            // Awaits the task started back in `runSetup()`/`chooseEngine()` - which has very
+            // likely already finished by now, having run the whole time the engine itself was
+            // being acquired, rather than only starting here.
+            try await frameworksTask?.value
         } catch {
             stage = .failed(error.localizedDescription)
             return
@@ -173,8 +201,12 @@ final class SetupCoordinator: ObservableObject {
     /// `SikarugirWrapperTemplateRemote`'s doc comment) if no wrapper app happens to be installed
     /// locally to copy from already - so a completely fresh install doesn't dead-end asking the
     /// user to go build a wrapper app in a separate tool first. A no-op, near-instant check for
-    /// anyone who already has this (the overwhelmingly common case).
-    private func ensureRuntimeFrameworksReady() async throws {
+    /// anyone who already has this (the overwhelmingly common case). The actual work behind
+    /// `frameworksTask` - runs concurrently with engine acquisition, so its own stage messaging can
+    /// genuinely interleave with the engine's for however briefly they're both actually downloading
+    /// at once; by the time `ensureDefaultBottleReady` awaits this, the engine's own async work is
+    /// always already finished, so there's no risk of the two fighting over `stage` past that point.
+    private func ensureRuntimeFrameworksReadyWork() async throws {
         let alreadyReady = await Task.detached(priority: .userInitiated) {
             (try? SikarugirEngine.ensureFrameworksAvailable()) != nil
         }.value
