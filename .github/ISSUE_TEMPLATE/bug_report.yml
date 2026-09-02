@@ -1,0 +1,57 @@
+name: Bug report
+description: Something in Playdock isn't working right
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect instead?
+      placeholder: Tell us what you saw, and what you expected to see.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact steps that trigger it, if you know them.
+      placeholder: |
+        1. Open Playdock
+        2. Click...
+        3. See error
+    validations:
+      required: false
+  - type: input
+    id: playdock-version
+    attributes:
+      label: Playdock version
+      description: Settings → About, or the .dmg/release you downloaded.
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: e.g. macOS 15.1 (Sequoia)
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How did you install Playdock?
+      options:
+        - Homebrew (brew install --cask)
+        - Manual .dmg download
+        - Built from source
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: >
+        If it's a launch/engine issue, Playdock's own diagnostics log helps a lot - Settings →
+        Open Logs Folder (or `~/Library/Logs/ExeDock/diagnostics.log`).
+      render: shell
+    validations:
+      required: false

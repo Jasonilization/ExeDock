@@ -1,0 +1,74 @@
+# Contributing to Playdock
+
+Thanks for considering it. This is a small, mostly solo-maintained project, so keep expectations
+casual - there's no formal RFC process, just open an issue or a PR.
+
+## Before you start
+
+For anything more than a small fix, open an issue first describing what you want to change. Saves
+everyone the disappointment of a big PR that doesn't fit the project's direction.
+
+## Building from source
+
+No Xcode required - this machine's own dev setup is Command Line Tools only, and the project is
+built that way on purpose so anyone can build it the same way:
+
+```sh
+git clone https://github.com/Jasonilization/ExeDock.git
+cd ExeDock
+./Scripts/build_app.sh        # swift build -c release, assemble Playdock.app, codesign
+```
+
+That produces `build/Playdock.app`. To package a `.dmg` the way releases ship:
+
+```sh
+./Scripts/make_dmg.sh 1.2.0   # -> dist/Playdock-1.2.0.dmg
+```
+
+Requires [Sikarugir Creator](https://sikarugir.app) to already have at least one Wine engine
+downloaded (`~/Library/Application Support/Sikarugir/Engines/`) the first time you run the built
+app, unless you're online - a fresh build will fetch its own engine copy automatically.
+
+Run the test suite with:
+
+```sh
+swift test
+```
+
+## Project conventions worth knowing before you dig in
+
+- **No `@State`.** This machine's toolchain can't compile SwiftUI's `@State` macro (the compiler
+  plugin isn't available outside Xcode.app). Every view in this codebase uses the project's own
+  `@LocalState` property wrapper instead (`Sources/ExeDock/Support/LocalState.swift`) - it's a
+  drop-in replacement, same call sites, just without the macro. Use it anywhere you'd normally
+  reach for `@State`.
+- **Real evidence over guessing.** UI bugs get diagnosed by actually building and screenshotting
+  the real app, not by reading the code and assuming. If you're fixing something visual, a
+  before/after screenshot in the PR description goes a long way.
+- **Comments explain *why*, not *what*.** The code should already say what it does; a comment
+  earns its place by explaining a non-obvious reason, a real bug it's working around, or a piece
+  of live user feedback that shaped the decision. Skip comments that just restate the line below
+  them.
+- **Never write into a wrapper app.** Anything under `~/Applications/Sikarugir/*.app` is a Sikarugir
+  Creator wrapper and is treated as strictly read-only everywhere in this codebase - Playdock only
+  ever reads from it. Playdock's own state lives entirely under `~/Library/Application
+  Support/ExeDock/` (yes, still named `ExeDock` internally - see the README for why that's
+  deliberate).
+- **The ten skins live in `Sources/ExeDock/Resources/SkinTemplate/`** (`skins.css` + `skins.js`),
+  rendered by a real `WKWebView` (`SkinWebGridView.swift`) - not hand-approximated in SwiftUI. If
+  you're adding or tweaking a skin, edit those files directly; changes take effect on the next
+  `./Scripts/build_app.sh` (no Xcode preview available on this toolchain, so testing means an
+  actual rebuild + relaunch).
+
+## Pull requests
+
+- Keep PRs focused - one fix or one feature, not a grab-bag.
+- Match the existing code style (see the conventions above).
+- If you touched anything visual, include a screenshot.
+- Update `README.md`'s "What's new" section if the change is user-facing.
+
+## Reporting bugs / requesting features
+
+Use the issue templates - they ask for the specifics that actually help (macOS version, what you
+expected vs. what happened, whether it's reproducible). For anything security-related, see
+[SECURITY.md](SECURITY.md) instead of opening a public issue.

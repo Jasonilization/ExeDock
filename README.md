@@ -72,8 +72,8 @@ missing, Playdock just tells you and waits.
   engine as everything else - no per-game setup.
 - **Advanced Mode** (off by default) - per-game engine/graphics/sync overrides, for the handful of
   games that actually need something different from your defaults.
-- **Exe Loader** - drag an `.exe` onto the window, browse any bottle's C: drive Finder-style, or
-  search everything Playdock's already found across your bottles.
+- **Exe Loader** - drag an `.exe` onto the window, or browse any bottle's C: drive Finder-style
+  under the C: Drive tab.
 - **Controller support** - a full D-pad/A/B focus loop across the dashboard, detail pages, and a
   dedicated Controller Mode carousel - not just one screen.
 - **Setup that gets out of your way** - on first launch it finds/extracts an engine and sets up its
@@ -90,6 +90,16 @@ No Xcode required, just Swift + Command Line Tools:
 ```
 
 ## What's new
+
+**Real per-skin visual identity + library layouts (1.2.0)** - the dashboard's "Library Look" setting
+(Settings → Library Look) now has real teeth: 6 structurally different layouts (Shelves, Sidebar,
+List, Steam-style, Poster Carousel, plus the default Grid) and 10 real visual skins, each rendering
+the actual mockup HTML/CSS it was designed from (Neobrutalist, Cyber Terminal, Vaporwave, and seven
+more) rather than an approximation - genuinely different worlds, not the same cards recolored. Every
+skin supports both light and dark appearance and follows the system setting. Also in this release:
+custom games' small icons show real art instead of placeholder colors, the Sidebar and Carousel
+layouts had real bugs fixed, and the old redundant "Library" tab (superseded by Game Mode's own
+dashboard) is gone.
 
 **Custom Game Library + native macOS Steam games (1.1.0)** - a Custom Game Library for anything
 that isn't on Steam, native macOS Steam games showing up alongside your Wine library, a visible

@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest something for Playdock
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What are you trying to do that Playdock doesn't help with today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you want instead?
+      description: Your idea for how this could work. Doesn't need to be fully worked out.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything you've tried as a workaround?
+    validations:
+      required: false
