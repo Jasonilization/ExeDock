@@ -29,9 +29,8 @@ struct ControllerModeView: View {
                     Spacer()
                     artwork
                         .frame(width: 280, height: 280)
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                    Text(currentGame.name)
-                        .font(.system(size: 36, weight: .bold))
+                        .tileSurface()
+                    SkinTitleText(text: currentGame.name, size: 36, lineLimit: 2)
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
@@ -145,16 +144,21 @@ struct ControllerModeView: View {
     private var neighborRow: some View {
         HStack {
             if selectedIndex > 0 {
-                Text("← \(games[selectedIndex - 1].name)")
-                    .foregroundStyle(.white.opacity(0.5))
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.left")
+                    SkinTitleText(text: games[selectedIndex - 1].name, size: 15)
+                }
+                .foregroundStyle(.white.opacity(0.5))
             }
             Spacer()
             if selectedIndex < games.count - 1 {
-                Text("\(games[selectedIndex + 1].name) →")
-                    .foregroundStyle(.white.opacity(0.5))
+                HStack(spacing: 6) {
+                    SkinTitleText(text: games[selectedIndex + 1].name, size: 15)
+                    Image(systemName: "chevron.right")
+                }
+                .foregroundStyle(.white.opacity(0.5))
             }
         }
-        .font(.callout)
         .padding(.horizontal, 60)
     }
 

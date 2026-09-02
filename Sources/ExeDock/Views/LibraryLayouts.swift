@@ -321,7 +321,7 @@ struct LibraryListLayout: View {
                     HStack(spacing: 12) {
                         SmallArtIcon(entry: entry, size: 30, cornerRadius: 6)
                         HStack(spacing: 6) {
-                            Text(entry.name).font(.callout.weight(.medium))
+                            SkinTitleText(text: entry.name, size: 15)
                             if case .custom = entry { Text("CUSTOM").font(.caption2.bold()).foregroundStyle(.purple) }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -362,8 +362,9 @@ struct LibrarySteamStyleLayout: View {
                 Text("LIBRARY").font(.caption2.weight(.bold)).foregroundStyle(.secondary).padding(.horizontal, 14).padding(.top, 16).padding(.bottom, 8)
                 ForEach(filters, id: \.self) { f in
                     Text(f).font(.callout.weight(f == filter ? .semibold : .regular))
+                        .foregroundStyle(f == filter ? Color.accentColor : .primary)
                         .padding(.horizontal, 14).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(f == filter ? Color.primary.opacity(0.08) : .clear)
+                        .background(f == filter ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 7))
                         .contentShape(Rectangle())
                         .onTapGesture { filter = f }
                 }
