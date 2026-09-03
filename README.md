@@ -26,8 +26,9 @@ launch. Right-click the app → **Open**, or:
 xattr -dr com.apple.quarantine "/Applications/Playdock.app"
 ```
 
-Requires Sikarugir Creator to already be installed, with at least one Wine engine downloaded
-(`~/Library/Application Support/Sikarugir/Engines/`) - that's the engine this app reuses.
+Nothing else to install - Playdock downloads and sets up its own Wine engine and runtime libraries
+automatically on first launch. If Sikarugir Creator is already installed with an engine downloaded
+(`~/Library/Application Support/Sikarugir/Engines/`), Playdock reuses that instead.
 
 ## Contact & Support
 
@@ -92,14 +93,20 @@ No Xcode required, just Swift + Command Line Tools:
 ## What's new
 
 **Real per-skin visual identity + library layouts (1.2.0)** - the dashboard's "Library Look" setting
-(Settings → Library Look) now has real teeth: 6 structurally different layouts (Shelves, Sidebar,
-List, Steam-style, Poster Carousel, plus the default Grid) and 10 real visual skins, each rendering
-the actual mockup HTML/CSS it was designed from (Neobrutalist, Cyber Terminal, Vaporwave, and seven
-more) rather than an approximation - genuinely different worlds, not the same cards recolored. Every
-skin supports both light and dark appearance and follows the system setting. Also in this release:
-custom games' small icons show real art instead of placeholder colors, the Sidebar and Carousel
-layouts had real bugs fixed, and the old redundant "Library" tab (superseded by Game Mode's own
-dashboard) is gone.
+(Settings → Library Look) now has real teeth: 7 structurally different layouts (Grid, Shelves,
+Sidebar, List, Steam-style, Carousel, Spotlight) and 7 real visual skins (Luxury, Glass, Brutalist,
+Terminal, Soft, Pixel, Minimal), each rendering the actual mockup HTML/CSS it was designed from
+rather than an approximation - genuinely different worlds, not the same cards recolored. Grid is
+rendered by a real embedded browser view running the original mockup markup directly; every other
+layout ports each skin's own card shape, shadow language, button recipe, and art treatment (down to
+Terminal's scanning CRT overlay) so nothing looks like "just a wallpaper and a font" next to Grid.
+Glass uses Apple's real Liquid Glass material where the system supports it. Cards and buttons can
+also pick up a subtle tint from each game's own artwork. Every skin supports both light and dark
+appearance and follows the system setting. Also in this release: a first-launch setup wizard for
+picking a look, a working search bar and sticky top bar, real Steam box art support, custom games'
+small icons showing real art instead of placeholder colors, zero-manual-setup installs (Playdock
+downloads its own Wine engine and runtime libraries automatically), and the old redundant "Library"
+tab (superseded by Game Mode's own dashboard) is gone.
 
 **Custom Game Library + native macOS Steam games (1.1.0)** - a Custom Game Library for anything
 that isn't on Steam, native macOS Steam games showing up alongside your Wine library, a visible
