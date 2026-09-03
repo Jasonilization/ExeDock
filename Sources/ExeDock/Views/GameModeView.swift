@@ -29,6 +29,12 @@ struct GameModeView: View {
     private var libraryLayout: LibraryLayoutStyle { LibraryLayoutStyle(rawValue: libraryLayoutRaw) ?? .grid }
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw = PlaydockSkin.luxury.rawValue
     private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
+    /// "add a hide steam icon launcher option," per live feedback - the floating icon also kept
+    /// grabbing controller focus unexpectedly (see `moveFocus`'s own doc comment on the real bug
+    /// that came from), so letting someone turn it off entirely addresses both complaints, not just
+    /// the visual one.
+    static let showSteamIconKey = "com.exedock.showSteamIcon"
+    @AppStorage(GameModeView.showSteamIconKey) private var showSteamIcon = true
     @LocalState private var search = ""
     @LocalState private var showingSettingsSheet = false
     @LocalState private var showingAddGameSheet = false
@@ -291,14 +297,23 @@ struct GameModeView: View {
                     alternateLayout
                 }
             }
+            // "make sure when controller there, the UI goes up a bit" - real room for the legend
+            // bar below instead of it floating on top of the last row of cards/content. Matches
+            // exactly the condition the legend bar itself renders under (isDashboardTheActive-
+            // ControllerLayer *and* actually connected) - this padding with no controller attached
+            // would just be a permanent, pointless gap at the bottom of the grid.
+            .padding(.bottom, isDashboardTheActiveControllerLayer && controllerObserver.isConnected ? Self.legendBarHeight : 0)
+            .animation(.easeInOut(duration: 0.2), value: controllerObserver.isConnected)
 
-            steamFloatingIcon
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .padding(24)
-                .allowsHitTesting(
-                    detailGame == nil && detailCustomGame == nil && launchOverlayGame == nil
-                        && launchOverlayCustomGame == nil && !showingControllerMode
-                )
+            if showSteamIcon {
+                steamFloatingIcon
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(24)
+                    .allowsHitTesting(
+                        detailGame == nil && detailCustomGame == nil && launchOverlayGame == nil
+                            && launchOverlayCustomGame == nil && !showingControllerMode
+                    )
+            }
 
             if isDashboardTheActiveControllerLayer {
                 ControllerLegendBar(hints: dashboardControllerHints)
@@ -540,29 +555,51 @@ struct GameModeView: View {
 
     private var steamFloatingIcon: some View {
         let isLaunching = model.launchingTarget == .steam
-        return ZStack {
-            steamIcon(size: 200, cornerRadius: 44)
-                .opacity(isLaunching ? 0.3 : 1)
-            if isLaunching {
-                ProgressView().controlSize(.large).scaleEffect(1.8)
+        return ZStack(alignment: .topLeading) {
+            ZStack {
+                steamIcon(size: 200, cornerRadius: 44)
+                    .opacity(isLaunching ? 0.3 : 1)
+                if isLaunching {
+                    ProgressView().controlSize(.large).scaleEffect(1.8)
+                }
+            }
+            .frame(width: 200, height: 200)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 44))
+            .shadow(color: .black.opacity(0.35), radius: 20, y: 8)
+            .contentShape(RoundedRectangle(cornerRadius: 44))
+            // No .pressPush()/other gesture-based press effect here on purpose - a real bug, found
+            // live: a simultaneous zero-distance DragGesture (which is what that press effect used to
+            // detect "pressed") competing with .onTapGesture(count: 2) on the same view could silently
+            // swallow the double-click recognition entirely, so double-clicking did nothing at all - no
+            // spinner, no launch. The isLaunching-driven opacity/spinner above is the only feedback
+            // this needs.
+            .onTapGesture(count: 2) {
+                model.openSteamClient()
+            }
+            .allowsHitTesting(model.launchingTarget == nil)
+            .focusRing(controllerObserver.isConnected && focusedTarget == .steamIcon)
+            .help(isLaunching ? "Launching Steam…" : "Double-click to open Steam")
+
+            // "dont see the minimalize the steam icon button" - the Settings toggle alone wasn't
+            // discoverable enough; a small, always-visible control right on the icon itself is the
+            // real fix. Points right/collapses right, matching where it actually goes (see the
+            // `.move(edge: .trailing)` transition below).
+            if !isLaunching {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.3)) { showSteamIcon = false }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 22, height: 22)
+                        .background(.black.opacity(0.45), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(6)
+                .help("Hide the Steam icon (Settings \u{2192} Show Floating Steam Icon brings it back)")
             }
         }
-        .frame(width: 200, height: 200)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 44))
-        .shadow(color: .black.opacity(0.35), radius: 20, y: 8)
-        .contentShape(RoundedRectangle(cornerRadius: 44))
-        // No .pressPush()/other gesture-based press effect here on purpose - a real bug, found
-        // live: a simultaneous zero-distance DragGesture (which is what that press effect used to
-        // detect "pressed") competing with .onTapGesture(count: 2) on the same view could silently
-        // swallow the double-click recognition entirely, so double-clicking did nothing at all - no
-        // spinner, no launch. The isLaunching-driven opacity/spinner above is the only feedback
-        // this needs.
-        .onTapGesture(count: 2) {
-            model.openSteamClient()
-        }
-        .allowsHitTesting(model.launchingTarget == nil)
-        .focusRing(controllerObserver.isConnected && focusedTarget == .steamIcon)
-        .help(isLaunching ? "Launching Steam…" : "Double-click to open Steam")
+        .transition(.move(edge: .trailing).combined(with: .opacity))
     }
 
     @ViewBuilder
@@ -650,6 +687,10 @@ struct GameModeView: View {
     }
 
     private static let gridSpacing: CGFloat = Playdock.Spacing.grid
+    /// `ControllerLegendBar`'s own real rendered height (8pt vertical padding on each side + one
+    /// line of `.caption`/`.callout` text) - kept as one shared constant so the bottom padding that
+    /// makes room for it and the bar's own size can't quietly drift apart.
+    private static let legendBarHeight: CGFloat = 40
 
     /// The grid's own column layout, back to plain `.adaptive(minimum:maximum:)` - SwiftUI works
     /// out how many columns actually fit *natively*, using the grid's own real proposed width
@@ -747,8 +788,20 @@ struct GameModeView: View {
             case .up:
                 focusedTarget = index < columns ? .toolbar(0) : .card(index - columns)
             case .down:
+                // A real, confirmed bug: "steam launch should be very bottom, as it makes
+                // navigation weird as it keeps popping to there" - every card in an incomplete
+                // last row (not just the actual last one) used to warp straight to the Steam icon
+                // on a single Down press, since `next` lands past the end of the array for any of
+                // them, not just the true bottom-right card. Now only the genuine last card - the
+                // one actually adjacent to the floating icon - can reach it; every other last-row
+                // card with empty space below it just stays put, matching what a real grid with
+                // nothing underneath should do.
                 let next = index + columns
-                focusedTarget = next < libraryEntries.count ? .card(next) : .steamIcon
+                if next < libraryEntries.count {
+                    focusedTarget = .card(next)
+                } else if index == libraryEntries.count - 1 && showSteamIcon {
+                    focusedTarget = .steamIcon
+                }
             }
         case .steamIcon:
             if direction == .up {
@@ -774,7 +827,7 @@ struct GameModeView: View {
             case .custom(let game): detailCustomGame = game
             }
         case .steamIcon:
-            guard model.launchingTarget == nil else { return }
+            guard showSteamIcon, model.launchingTarget == nil else { return }
             model.openSteamClient()
         case nil:
             break
@@ -1767,7 +1820,7 @@ private struct EngineUpdateSection: View {
 /// nested controls (sliders, pickers) aren't part of this focus loop yet - a smaller follow-up,
 /// same as the header/search/sort scope boundary on the main dashboard.
 private enum SettingsRow: Int, CaseIterable {
-    case advancedMode, sampleGames, openLogs, openCrashReports, done
+    case advancedMode, showSteamIcon, sampleGames, openLogs, openCrashReports, done
 }
 
 private struct DefaultSettingsSheet: View {
@@ -1780,6 +1833,7 @@ private struct DefaultSettingsSheet: View {
     @AppStorage(LibraryLayoutStyle.storageKey) private var libraryLayoutRaw = LibraryLayoutStyle.grid.rawValue
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw = PlaydockSkin.luxury.rawValue
     @AppStorage(PlaydockArtSource.storageKey) private var artSourceRaw = PlaydockArtSource.banner.rawValue
+    @AppStorage(GameModeView.showSteamIconKey) private var showSteamIcon = true
 
     private func isFocused(_ row: SettingsRow) -> Bool {
         controllerObserver.isConnected && focusedRow == row
@@ -1803,6 +1857,15 @@ private struct DefaultSettingsSheet: View {
                         .focusRing(isFocused(.advancedMode))
                 } footer: {
                     Text("Adds a settings button to each game so you can fine-tune its engine and graphics settings individually. Most people never need this.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
+                    Toggle("Show Floating Steam Icon", isOn: $showSteamIcon)
+                        .focusRing(isFocused(.showSteamIcon))
+                } footer: {
+                    Text("The double-click-to-open-Steam icon in the corner of the grid. Turn off if it gets in the way of controller navigation.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1890,6 +1953,7 @@ private struct DefaultSettingsSheet: View {
             .onChange(of: controllerObserver.primaryPress) { _ in
                 switch focusedRow {
                 case .advancedMode: isAdvancedMode.toggle()
+                case .showSteamIcon: showSteamIcon.toggle()
                 case .sampleGames: model.togglePreviewSampleGames()
                 case .openLogs: model.revealInFinder(ExeRunner.logsDir)
                 case .openCrashReports: model.revealInFinder(("~/Library/Logs/DiagnosticReports" as NSString).expandingTildeInPath)

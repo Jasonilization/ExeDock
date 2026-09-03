@@ -49,7 +49,13 @@ struct ControllerLegendBar: View {
 
     var body: some View {
         if controllerObserver.isConnected, !hints.isEmpty {
+            // Centered, not packed against the leading edge - "UI toggle also blocking visibility
+            // of controller navigation help," a real, confirmed collision with the UI-size slider
+            // that already lives fixed in the window's own bottom-left corner (ContentView's
+            // `uiScaleSlider`). Centering keeps this clear of that corner on any real window width
+            // instead of hand-tuning a leading inset to match one specific control's own size.
             HStack(spacing: 18) {
+                Spacer()
                 ForEach(hints) { hint in
                     HStack(spacing: 6) {
                         Image(systemName: hint.symbol)

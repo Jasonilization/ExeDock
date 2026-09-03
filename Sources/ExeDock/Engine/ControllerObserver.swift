@@ -141,20 +141,33 @@ final class ControllerObserver: ObservableObject {
         let profile = controller.physicalInputProfile
         DiagnosticsLog.log("ControllerObserver: attaching handlers to \(Self.describe(controller)) - buttons: \(profile.buttons.keys.sorted().joined(separator: ",")) dpads: \(profile.dpads.keys.sorted().joined(separator: ","))")
 
+        // Real, per-press diagnostics - "not working, continue checking," after detection itself
+        // was already confirmed working (the connect banner/legend genuinely show live). This is
+        // the next real question: does a physical press actually reach this handler at all. Every
+        // handler below logs on the real button-edge event, before touching any @Published state,
+        // so the log alone answers it - if a press is logged, the app saw it; if a screen still
+        // didn't react to a logged press, the bug is downstream (a specific view's own `.onChange`
+        // filter), not detection or wiring.
+        func log(_ input: String) { DiagnosticsLog.log("ControllerObserver: \(input) pressed") }
+
         profile.buttons[GCInputLeftShoulder]?.pressedChangedHandler = { [weak self] _, _, pressed in
             guard pressed else { return }
+            log("LB")
             Task { @MainActor in self?.sectionStepRequest = (-1, UUID()) }
         }
         profile.buttons[GCInputRightShoulder]?.pressedChangedHandler = { [weak self] _, _, pressed in
             guard pressed else { return }
+            log("RB")
             Task { @MainActor in self?.sectionStepRequest = (1, UUID()) }
         }
         profile.buttons[GCInputLeftTrigger]?.pressedChangedHandler = { [weak self] _, _, pressed in
             guard pressed else { return }
+            log("LT")
             Task { @MainActor in self?.gameStepRequest = (-1, UUID()) }
         }
         profile.buttons[GCInputRightTrigger]?.pressedChangedHandler = { [weak self] _, _, pressed in
             guard pressed else { return }
+            log("RT")
             Task { @MainActor in self?.gameStepRequest = (1, UUID()) }
         }
 
@@ -164,27 +177,35 @@ final class ControllerObserver: ObservableObject {
         if let dpad = profile.dpads[GCInputDirectionPad] {
             dpad.up.pressedChangedHandler = { [weak self] _, _, pressed in
                 guard pressed else { return }
+                log("D-pad up")
                 Task { @MainActor in self?.directionPress = (.up, UUID()) }
             }
             dpad.down.pressedChangedHandler = { [weak self] _, _, pressed in
                 guard pressed else { return }
+                log("D-pad down")
                 Task { @MainActor in self?.directionPress = (.down, UUID()) }
             }
             dpad.left.pressedChangedHandler = { [weak self] _, _, pressed in
                 guard pressed else { return }
+                log("D-pad left")
                 Task { @MainActor in self?.directionPress = (.left, UUID()) }
             }
             dpad.right.pressedChangedHandler = { [weak self] _, _, pressed in
                 guard pressed else { return }
+                log("D-pad right")
                 Task { @MainActor in self?.directionPress = (.right, UUID()) }
             }
+        } else {
+            DiagnosticsLog.log("ControllerObserver: no dpad found under key '\(GCInputDirectionPad)' - real dpad presses will never be seen")
         }
         profile.buttons[GCInputButtonA]?.pressedChangedHandler = { [weak self] _, _, pressed in
             guard pressed else { return }
+            log("A")
             Task { @MainActor in self?.primaryPress = UUID() }
         }
         profile.buttons[GCInputButtonB]?.pressedChangedHandler = { [weak self] _, _, pressed in
             guard pressed else { return }
+            log("B")
             Task { @MainActor in self?.secondaryPress = UUID() }
         }
     }
