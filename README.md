@@ -11,6 +11,20 @@ box art, a short description, your account's name and avatar - with a big icon y
 open Steam itself, same as you would on the desktop. Drag-and-drop `.exe` support is still in here
 too, tucked under "Exe Loader" in the sidebar for when you just need to run something once.
 
+## Screenshots
+
+<img src="docs/screenshots/terminal-grid.png" alt="Playdock's Grid layout in the Terminal skin, showing a mixed library with Mac and Custom badges" width="800">
+
+<details>
+<summary>More screenshots (Steam-style, Carousel)</summary>
+<br>
+
+<img src="docs/screenshots/soft-steam-style.png" alt="Steam-style layout in the Soft skin" width="800">
+
+<img src="docs/screenshots/minimal-carousel.png" alt="Carousel layout in the Minimal skin" width="800">
+
+</details>
+
 ## Installing
 
 **Homebrew:**

@@ -19,6 +19,26 @@ private enum DashboardFocusTarget: Equatable {
     case steamIcon
 }
 
+/// A rectangle rounded only on its leading (left) side, flat on the trailing side - the collapsed
+/// Steam icon's own real "docked to the edge" shape (`steamIconEdgeTab`). `RoundedRectangle` alone
+/// can't express per-corner radii on this toolchain's minimum macOS target (that convenience API
+/// is macOS 14+; this project's own `LSMinimumSystemVersion` is 13), so this is a plain `Path`.
+private struct LeftRoundedRect: Shape {
+    var radius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX + radius, y: rect.minY))
+        path.addArc(center: CGPoint(x: rect.minX + radius, y: rect.minY + radius), radius: radius, startAngle: .degrees(-90), endAngle: .degrees(180), clockwise: true)
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - radius))
+        path.addArc(center: CGPoint(x: rect.minX + radius, y: rect.maxY - radius), radius: radius, startAngle: .degrees(180), endAngle: .degrees(90), clockwise: true)
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
 struct GameModeView: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var runningTracker = RunningGameTracker.shared
@@ -309,15 +329,18 @@ struct GameModeView: View {
             .padding(.bottom, isDashboardTheActiveControllerLayer && controllerObserver.isConnected ? Self.legendBarHeight : 0)
             .animation(.easeInOut(duration: 0.2), value: controllerObserver.isConnected)
 
-            if showSteamIcon {
-                steamFloatingIcon
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .padding(24)
-                    .allowsHitTesting(
-                        detailGame == nil && detailCustomGame == nil && launchOverlayGame == nil
-                            && launchOverlayCustomGame == nil && !showingControllerMode
-                    )
-            }
+            // "minimalizing steam launcher just makes it disappear... should be on the edge but
+            // still expandable... should look good too," then "it disappears for a second...
+            // should be smooth, like when you minimize your window on macOS" - steamFloatingIcon
+            // now owns both its expanded and collapsed states as one continuous view (see its own
+            // doc comment), rather than this call site swapping between two separate ones.
+            steamFloatingIcon
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .allowsHitTesting(
+                    detailGame == nil && detailCustomGame == nil && launchOverlayGame == nil
+                        && launchOverlayCustomGame == nil && !showingControllerMode
+                )
+            .animation(.easeInOut(duration: 0.3), value: showSteamIcon)
 
             if isDashboardTheActiveControllerLayer {
                 ControllerLegendBar(hints: dashboardControllerHints)
@@ -557,8 +580,26 @@ struct GameModeView: View {
     /// while launching.
     private static let nativeSteamAppPath = "/Applications/Steam.app"
 
+    /// One continuous view for both the full icon and its collapsed edge tab - "it disappears for
+    /// a second... should be smooth, like when you minimize your window on macOS," a real,
+    /// confirmed gap from the previous version, which swapped between two entirely separate views
+    /// (one unmounting before the other finished mounting). Both states' content stay mounted the
+    /// whole time and simply cross-fade while the shared container smoothly resizes/reshapes under
+    /// them, so there's never a frame where neither is visible.
     private var steamFloatingIcon: some View {
         let isLaunching = model.launchingTarget == .steam
+        let collapsed = !showSteamIcon
+        // A real, confirmed layout bug in the first version of this: the full-icon content kept
+        // an unconditional 200x200 frame even while "collapsed," so the ZStack's own natural size
+        // never actually matched the smaller frame this whole view was told to report - the
+        // outer .frame() call can change what size a view *reports upward*, but it doesn't reflow
+        // topLeading-aligned children that still think they have 200x200 to lay out in, which is
+        // exactly why the collapsed tab landed somewhere unreachable/invisible instead of neatly
+        // docked to the edge. Every child below now sizes itself to this *same* pair of numbers,
+        // so there's only ever one real size in play, not two disagreeing ones.
+        let width: CGFloat = collapsed ? 34 : 200
+        let height: CGFloat = collapsed ? 116 : 200
+
         return ZStack(alignment: .topLeading) {
             ZStack {
                 steamIcon(size: 200, cornerRadius: 44)
@@ -567,9 +608,7 @@ struct GameModeView: View {
                     ProgressView().controlSize(.large).scaleEffect(1.8)
                 }
             }
-            .frame(width: 200, height: 200)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 44))
-            .shadow(color: .black.opacity(0.35), radius: 20, y: 8)
+            .frame(width: width, height: height)
             .contentShape(RoundedRectangle(cornerRadius: 44))
             // No .pressPush()/other gesture-based press effect here on purpose - a real bug, found
             // live: a simultaneous zero-distance DragGesture (which is what that press effect used to
@@ -580,17 +619,17 @@ struct GameModeView: View {
             .onTapGesture(count: 2) {
                 model.openSteamClient()
             }
-            .allowsHitTesting(model.launchingTarget == nil)
+            .opacity(collapsed ? 0 : 1)
+            .allowsHitTesting(!collapsed && model.launchingTarget == nil)
             .focusRing(controllerObserver.isConnected && focusedTarget == .steamIcon)
             .help(isLaunching ? "Launching Steam…" : "Double-click to open Steam")
 
             // "dont see the minimalize the steam icon button" - the Settings toggle alone wasn't
             // discoverable enough; a small, always-visible control right on the icon itself is the
-            // real fix. Points right/collapses right, matching where it actually goes (see the
-            // `.move(edge: .trailing)` transition below).
+            // real fix.
             if !isLaunching {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.3)) { showSteamIcon = false }
+                    showSteamIcon = false
                 } label: {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.bold))
@@ -600,10 +639,44 @@ struct GameModeView: View {
                 }
                 .buttonStyle(.plain)
                 .padding(6)
-                .help("Hide the Steam icon (Settings \u{2192} Show Floating Steam Icon brings it back)")
+                .opacity(collapsed ? 0 : 1)
+                .allowsHitTesting(!collapsed)
+                .help("Collapse the Steam icon to the edge")
             }
+
+            // The collapsed edge tab - "should be on the edge but still expandable," not gone
+            // entirely. Always mounted (see this whole property's own doc comment above), just
+            // invisible/non-interactive while expanded.
+            Button {
+                showSteamIcon = true
+            } label: {
+                VStack(spacing: 8) {
+                    Image(systemName: "chevron.left")
+                        .font(.caption.weight(.bold))
+                    steamIcon(size: 26, cornerRadius: 7)
+                        .frame(width: 26, height: 26)
+                }
+                .foregroundStyle(.white)
+                .padding(.vertical, 14)
+                .frame(width: width, height: height)
+            }
+            .buttonStyle(.plain)
+            .opacity(collapsed ? 1 : 0)
+            .allowsHitTesting(collapsed)
+            .help("Show the Steam icon")
         }
-        .transition(.move(edge: .trailing).combined(with: .opacity))
+        .frame(width: width, height: height, alignment: .topTrailing)
+        .background(
+            .regularMaterial,
+            in: collapsed ? AnyShape(LeftRoundedRect(radius: 16)) : AnyShape(RoundedRectangle(cornerRadius: 44))
+        )
+        .clipShape(collapsed ? AnyShape(LeftRoundedRect(radius: 16)) : AnyShape(RoundedRectangle(cornerRadius: 44)))
+        .shadow(color: .black.opacity(collapsed ? 0.3 : 0.35), radius: collapsed ? 12 : 20, x: collapsed ? -2 : 0, y: collapsed ? 0 : 8)
+        // Flush against the real trailing edge while collapsed - "should be on the edge" - a
+        // fixed 24pt inset only while expanded, matching the padding this always had.
+        .padding(.trailing, collapsed ? 0 : 24)
+        .padding(.bottom, collapsed ? 40 : 24)
+        .animation(.easeInOut(duration: 0.3), value: showSteamIcon)
     }
 
     @ViewBuilder
@@ -1869,7 +1942,7 @@ private struct DefaultSettingsSheet: View {
                     Toggle("Show Floating Steam Icon", isOn: $showSteamIcon)
                         .focusRing(isFocused(.showSteamIcon))
                 } footer: {
-                    Text("The double-click-to-open-Steam icon in the corner of the grid. Turn off if it gets in the way of controller navigation.")
+                    Text("The double-click-to-open-Steam icon in the corner of the grid. Turn off to collapse it to a small tab on the edge (still there, just out of the way) - the icon itself has the same control.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

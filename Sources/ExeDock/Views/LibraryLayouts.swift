@@ -11,6 +11,11 @@ struct LibraryPresentation {
     let genre: String?
     let description: String?
     let isCustom: Bool
+    /// A game found in the real, separate macOS Steam client's own library
+    /// (`SteamGameSource.nativeMac`) - the native layouts' own equivalent of `SkinWebGridEntry.mac`
+    /// in the WebView-rendered ones, so every layout shows the same real "Mac" badge, not just Grid/
+    /// Steam-style/Spotlight.
+    let isMac: Bool
 
     /// What shape of tile is asking - every portrait/square tile used to force-crop the landscape
     /// store banner because portrait/square art was never looked for at all. Each call site says
@@ -23,10 +28,10 @@ struct LibraryPresentation {
     static func resolve(_ entry: LibraryEntry, shape: Shape = .landscape) async -> LibraryPresentation {
         switch entry {
         case .custom(let game):
-            return LibraryPresentation(artPath: game.effectiveArtworkPath, genre: game.discovered.steamGenres.first, description: game.effectiveDescription, isCustom: true)
+            return LibraryPresentation(artPath: game.effectiveArtworkPath, genre: game.discovered.steamGenres.first, description: game.effectiveDescription, isCustom: true, isMac: false)
         case .steam(let game):
             let info = await SteamStoreInfoCache.shared.info(for: game.metadataAppID)
-            return LibraryPresentation(artPath: preferredArtPath(appID: game.metadataAppID, shape: shape, bannerPath: info?.headerImagePath), genre: info?.genres.first, description: info?.shortDescription, isCustom: false)
+            return LibraryPresentation(artPath: preferredArtPath(appID: game.metadataAppID, shape: shape, bannerPath: info?.headerImagePath), genre: info?.genres.first, description: info?.shortDescription, isCustom: false, isMac: game.source == .nativeMac)
         }
     }
 
@@ -126,6 +131,12 @@ private struct LibraryEntryTile: View {
                     .onHover { isHovering = $0 }
                 if presentation?.isCustom == true {
                     Text("CUSTOM").font(.system(size: 9, weight: .bold)).padding(4).background(.purple, in: Capsule()).foregroundStyle(.white).padding(6)
+                } else if presentation?.isMac == true {
+                    // Same real #0071e3 (Apple's own system blue) the WebView badge uses - "fix
+                    // mac label for the other ones," per live feedback: only Grid/Steam-style/
+                    // Spotlight (all WebView-rendered) had this, every native layout's own tile
+                    // still only knew about "Custom."
+                    Text("MAC").font(.system(size: 9, weight: .bold)).padding(4).background(Color(red: 0, green: 0.443, blue: 0.827), in: Capsule()).foregroundStyle(.white).padding(6)
                 }
                 if isRunning {
                     Circle().fill(.green).frame(width: 9, height: 9).padding(6)
@@ -342,7 +353,11 @@ struct LibrarySidebarLayout: View {
                             .clipped()
                         LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .center, endPoint: .bottom)
                         VStack(alignment: .leading, spacing: 10) {
-                            if presentation?.isCustom == true { Text("CUSTOM GAME").font(.caption.bold()).foregroundStyle(.purple) }
+                            if presentation?.isCustom == true {
+                                Text("CUSTOM GAME").font(.caption.bold()).foregroundStyle(.purple)
+                            } else if presentation?.isMac == true {
+                                Text("MAC GAME").font(.caption.bold()).foregroundStyle(Color(red: 0.4, green: 0.68, blue: 1.0))
+                            }
                             SkinTitleText(text: selected.name, size: 30).foregroundStyle(.white)
                             if let desc = presentation?.description {
                                 Text(desc).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(3).frame(maxWidth: 440, alignment: .leading)
