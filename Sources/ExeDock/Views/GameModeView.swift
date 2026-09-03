@@ -1064,10 +1064,10 @@ struct GameDetailView: View {
     @LocalState private var focusedActionIndex = 0
     /// Non-nil while a photo is shown full-size over everything else.
     @LocalState private var expandedImagePath: String?
+    @LocalState private var gameAccent: Color?
 
     private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.appID] }
     private var hasCustomSettings: Bool { model.perGameConfigs[game.appID] != nil }
-    private var gameAccent: Color? { storeInfo?.headerImagePath.flatMap { GameArtColor.dominantColor(forImagePath: $0) } }
 
     /// Exactly the same conditions `actionRow` already uses to decide what to show - kept as one
     /// list so controller focus always lines up with what's actually on screen (e.g. never
@@ -1158,6 +1158,7 @@ struct GameDetailView: View {
         .colorScheme(.dark)
         .task(id: game.appID) {
             storeInfo = await SteamStoreInfoCache.shared.info(for: game.metadataAppID)
+            if let path = storeInfo?.headerImagePath { gameAccent = await GameArtColor.dominantColor(forImagePath: path) }
         }
         .onExitCommand { onClose() }
         // GameDetailView always treats itself as the active controller-input layer while it's

@@ -106,9 +106,9 @@ private struct LibraryEntryTile: View {
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     @LocalState private var presentation: LibraryPresentation?
     @LocalState private var isHovering = false
+    @LocalState private var gameAccent: Color?
 
     private var isRunning: Bool { runningTracker.runningGames[entry.id] != nil }
-    private var gameAccent: Color? { presentation?.artPath.flatMap { GameArtColor.dominantColor(forImagePath: $0) } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -129,7 +129,10 @@ private struct LibraryEntryTile: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { onOpen() }
-        .task(id: entry.id) { presentation = await LibraryPresentation.resolve(entry, shape: artShape) }
+        .task(id: entry.id) {
+            presentation = await LibraryPresentation.resolve(entry, shape: artShape)
+            if let path = presentation?.artPath { gameAccent = await GameArtColor.dominantColor(forImagePath: path) }
+        }
     }
 }
 
@@ -140,6 +143,7 @@ struct LibraryShelvesLayout: View {
     let onOpenDetail: (LibraryEntry) -> Void
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     @LocalState private var featuredPresentation: LibraryPresentation?
+    @LocalState private var featuredAccent: Color?
     /// Set the instant someone uses the prev/next arrows - once they have, that choice sticks
     /// (browsing away and back doesn't silently snap back to whatever's running/first). The hero
     /// used to be permanently `entries.first` with no way to change it at all.
@@ -172,7 +176,7 @@ struct LibraryShelvesLayout: View {
                                 Text(desc).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(2).frame(maxWidth: 460, alignment: .leading)
                             }
                             Button("View Details") { onOpenDetail(featured) }
-                                .buttonStyle(PlaydockButtonStyle(accentOverride: featuredPresentation?.artPath.flatMap { GameArtColor.dominantColor(forImagePath: $0) }))
+                                .buttonStyle(PlaydockButtonStyle(accentOverride: featuredAccent))
                         }
                         .padding(32)
                         if entries.count > 1 {
@@ -185,7 +189,10 @@ struct LibraryShelvesLayout: View {
                             .frame(maxWidth: .infinity, maxHeight: 300)
                         }
                     }
-                    .task(id: featured.id) { featuredPresentation = await LibraryPresentation.resolve(featured) }
+                    .task(id: featured.id) {
+                        featuredPresentation = await LibraryPresentation.resolve(featured)
+                        if let path = featuredPresentation?.artPath { featuredAccent = await GameArtColor.dominantColor(forImagePath: path) }
+                    }
                 }
                 if !customEntries.isEmpty { shelf("Custom Games", customEntries) }
                 shelf("Your Library", entries)
@@ -228,6 +235,7 @@ struct LibrarySidebarLayout: View {
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     @LocalState private var selectedID: String?
     @LocalState private var presentation: LibraryPresentation?
+    @LocalState private var selectedAccent: Color?
 
     private var selected: LibraryEntry? {
         entries.first { $0.id == selectedID } ?? entries.first
@@ -286,13 +294,16 @@ struct LibrarySidebarLayout: View {
                                 Text(desc).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(3).frame(maxWidth: 440, alignment: .leading)
                             }
                             Button("View Details") { onOpenDetail(selected) }
-                                .buttonStyle(PlaydockButtonStyle(accentOverride: presentation?.artPath.flatMap { GameArtColor.dominantColor(forImagePath: $0) }))
+                                .buttonStyle(PlaydockButtonStyle(accentOverride: selectedAccent))
                         }
                         .padding(32)
                     }
                     .frame(width: max(0, geo.size.width - Self.sidebarWidth), height: geo.size.height)
                     .clipped()
-                    .task(id: selected.id) { presentation = await LibraryPresentation.resolve(selected) }
+                    .task(id: selected.id) {
+                        presentation = await LibraryPresentation.resolve(selected)
+                        if let path = presentation?.artPath { selectedAccent = await GameArtColor.dominantColor(forImagePath: path) }
+                    }
                 } else {
                     Color.clear.frame(width: max(0, geo.size.width - Self.sidebarWidth), height: geo.size.height)
                 }
@@ -466,6 +477,7 @@ struct LibrarySpotlightLayout: View {
     let onOpenDetail: (LibraryEntry) -> Void
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     @LocalState private var featuredPresentation: LibraryPresentation?
+    @LocalState private var featuredAccent: Color?
     /// Sticks once someone browses manually - see `LibraryShelvesLayout`'s identical field for why.
     @LocalState private var manualFeaturedID: String?
 
@@ -473,7 +485,6 @@ struct LibrarySpotlightLayout: View {
         if let manualFeaturedID, let match = entries.first(where: { $0.id == manualFeaturedID }) { return match }
         return runningTracker.runningGames.keys.first.flatMap { id in entries.first { $0.id == id } } ?? entries.first
     }
-    private var featuredAccent: Color? { featuredPresentation?.artPath.flatMap { GameArtColor.dominantColor(forImagePath: $0) } }
     private var rest: [LibraryEntry] {
         guard let featured else { return entries }
         return entries.filter { $0.id != featured.id }
@@ -519,7 +530,10 @@ struct LibrarySpotlightLayout: View {
                         }
                     }
                     .padding(32)
-                    .task(id: featured.id) { featuredPresentation = await LibraryPresentation.resolve(featured) }
+                    .task(id: featured.id) {
+                        featuredPresentation = await LibraryPresentation.resolve(featured)
+                        if let path = featuredPresentation?.artPath { featuredAccent = await GameArtColor.dominantColor(forImagePath: path) }
+                    }
                 }
                 if !rest.isEmpty {
                     VStack(alignment: .leading, spacing: 16) {

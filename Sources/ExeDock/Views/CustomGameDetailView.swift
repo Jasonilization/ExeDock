@@ -26,11 +26,11 @@ struct CustomGameDetailView: View {
     @LocalState private var focusedActionIndex = 0
     /// Non-nil while a photo is shown full-size over everything else.
     @LocalState private var expandedImagePath: String?
+    @LocalState private var gameAccent: Color?
 
     private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.id] }
     private var hasCustomSettings: Bool { model.perGameConfigs[game.id] != nil }
     private var isMissing: Bool { !FileManager.default.fileExists(atPath: game.exePath) }
-    private var gameAccent: Color? { game.effectiveArtworkPath.flatMap { GameArtColor.dominantColor(forImagePath: $0) } }
 
     private var availableActions: [CustomDetailAction] {
         var actions: [CustomDetailAction] = []
@@ -88,6 +88,9 @@ struct CustomGameDetailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .colorScheme(.dark)
+        .task(id: game.id) {
+            if let path = game.effectiveArtworkPath { gameAccent = await GameArtColor.dominantColor(forImagePath: path) }
+        }
         .onExitCommand { onClose() }
         .onChange(of: controllerObserver.directionPress?.token) { _ in
             guard expandedImagePath == nil, let direction = controllerObserver.directionPress?.direction else { return }
