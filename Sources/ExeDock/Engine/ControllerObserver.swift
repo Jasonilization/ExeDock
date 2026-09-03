@@ -51,20 +51,22 @@ final class ControllerObserver: ObservableObject {
     @Published private(set) var secondaryPress: UUID?
 
     /// The real, currently-attached controller's own SF Symbol names for each button this app
-    /// actually uses (Apple's `GCExtendedGamepad` hands these back per-element, matched to whatever
-    /// is really plugged in - an Xbox pad reports its own glyphs, a DualSense reports PlayStation's,
-    /// an MFi pad its own generic ones) - so the on-screen control legend shows the real glyph for
-    /// the real hardware instead of one guessed icon painted over every controller alike. Falls back
-    /// to a plain, reasonable SF Symbol when nothing's connected (the legend only ever renders while
-    /// `isConnected` anyway, but every accessor stays safe to call regardless).
-    var dpadSymbol: String { activeGamepad?.dpad.sfSymbolsName ?? "dpad" }
-    var buttonASymbol: String { activeGamepad?.buttonA.sfSymbolsName ?? "a.circle" }
-    var buttonBSymbol: String { activeGamepad?.buttonB.sfSymbolsName ?? "b.circle" }
-    var leftShoulderSymbol: String { activeGamepad?.leftShoulder.sfSymbolsName ?? "l.rectangle.roundedbottom" }
-    var rightShoulderSymbol: String { activeGamepad?.rightShoulder.sfSymbolsName ?? "r.rectangle.roundedbottom" }
-    var leftTriggerSymbol: String { activeGamepad?.leftTrigger.sfSymbolsName ?? "l2.rectangle.roundedbottom" }
-    var rightTriggerSymbol: String { activeGamepad?.rightTrigger.sfSymbolsName ?? "r2.rectangle.roundedbottom" }
-    private var activeGamepad: GCExtendedGamepad? { GCController.controllers().first?.extendedGamepad }
+    /// actually uses (Apple hands these back per-element, matched to whatever is really plugged in -
+    /// an Xbox pad reports its own glyphs, a DualSense reports PlayStation's, an MFi pad its own
+    /// generic ones) - so the on-screen control legend shows the real glyph for the real hardware
+    /// instead of one guessed icon painted over every controller alike. Falls back to a plain,
+    /// reasonable SF Symbol when nothing's connected (the legend only ever renders while
+    /// `isConnected` anyway, but every accessor stays safe to call regardless). Reads
+    /// `physicalInputProfile` - see `attachGlobalHandlers`'s own doc comment for why that's the
+    /// right one to read instead of `extendedGamepad`.
+    var dpadSymbol: String { activeProfile?.dpads[GCInputDirectionPad]?.sfSymbolsName ?? "dpad" }
+    var buttonASymbol: String { activeProfile?.buttons[GCInputButtonA]?.sfSymbolsName ?? "a.circle" }
+    var buttonBSymbol: String { activeProfile?.buttons[GCInputButtonB]?.sfSymbolsName ?? "b.circle" }
+    var leftShoulderSymbol: String { activeProfile?.buttons[GCInputLeftShoulder]?.sfSymbolsName ?? "l.rectangle.roundedbottom" }
+    var rightShoulderSymbol: String { activeProfile?.buttons[GCInputRightShoulder]?.sfSymbolsName ?? "r.rectangle.roundedbottom" }
+    var leftTriggerSymbol: String { activeProfile?.buttons[GCInputLeftTrigger]?.sfSymbolsName ?? "l2.rectangle.roundedbottom" }
+    var rightTriggerSymbol: String { activeProfile?.buttons[GCInputRightTrigger]?.sfSymbolsName ?? "r2.rectangle.roundedbottom" }
+    private var activeProfile: GCPhysicalInputProfile? { GCController.controllers().first?.physicalInputProfile }
 
     private init() {
         let atLaunch = GCController.controllers()
@@ -76,9 +78,10 @@ final class ControllerObserver: ObservableObject {
         // hardware, so this is the actual, checkable evidence trail for next time instead of a
         // second guess - Settings -> Open Logs Folder -> diagnostics.log.
         DiagnosticsLog.log("ControllerObserver: \(atLaunch.count) controller(s) present at launch" + (atLaunch.isEmpty ? "" : ": " + atLaunch.map { Self.describe($0) }.joined(separator: ", ")))
-        if let controller = atLaunch.first {
-            attachGlobalHandlers(to: controller)
-        }
+        // Every controller present, not just the first - a real defensive fix, not just the
+        // obvious case: some real hardware (a DualSense reconnecting, in particular) has been seen
+        // to briefly enumerate as more than one GCController entry before settling down to one.
+        for controller in atLaunch { attachGlobalHandlers(to: controller) }
         // Two real, documented gaps a controller that's paired at the OS level but not yet
         // surfaced to this app can fall into - neither was ever set anywhere in this codebase.
         // `shouldMonitorBackgroundEvents` governs whether GCController keeps delivering events
@@ -124,21 +127,33 @@ final class ControllerObserver: ObservableObject {
         }
     }
 
+    /// Reads `controller.physicalInputProfile` - Apple's newer, unified profile every real
+    /// controller populates - rather than `controller.extendedGamepad`, which can come back `nil`
+    /// for real, currently-shipping hardware whose exact layout doesn't map perfectly onto Apple's
+    /// fixed "extended gamepad" template (confirmed live: a DualSense over Bluetooth reported fine
+    /// in macOS's own System Settings but this app never saw it - `extendedGamepad` silently
+    /// bailing out here, with no logging at all before this, is the single most likely reason why).
+    /// `physicalInputProfile.buttons`/`.dpads` are looked up individually by Apple's own standard
+    /// element-name constants (`GCInputButtonA` etc.) and each one is optional on its own, so a
+    /// controller genuinely missing one input (say, no shoulder buttons) still gets everything else
+    /// wired instead of this bailing out entirely the way the old single `guard let` did.
     private func attachGlobalHandlers(to controller: GCController) {
-        guard let gamepad = controller.extendedGamepad else { return }
-        gamepad.leftShoulder.pressedChangedHandler = { [weak self] _, _, pressed in
+        let profile = controller.physicalInputProfile
+        DiagnosticsLog.log("ControllerObserver: attaching handlers to \(Self.describe(controller)) - buttons: \(profile.buttons.keys.sorted().joined(separator: ",")) dpads: \(profile.dpads.keys.sorted().joined(separator: ","))")
+
+        profile.buttons[GCInputLeftShoulder]?.pressedChangedHandler = { [weak self] _, _, pressed in
             guard pressed else { return }
             Task { @MainActor in self?.sectionStepRequest = (-1, UUID()) }
         }
-        gamepad.rightShoulder.pressedChangedHandler = { [weak self] _, _, pressed in
+        profile.buttons[GCInputRightShoulder]?.pressedChangedHandler = { [weak self] _, _, pressed in
             guard pressed else { return }
             Task { @MainActor in self?.sectionStepRequest = (1, UUID()) }
         }
-        gamepad.leftTrigger.pressedChangedHandler = { [weak self] _, _, pressed in
+        profile.buttons[GCInputLeftTrigger]?.pressedChangedHandler = { [weak self] _, _, pressed in
             guard pressed else { return }
             Task { @MainActor in self?.gameStepRequest = (-1, UUID()) }
         }
-        gamepad.rightTrigger.pressedChangedHandler = { [weak self] _, _, pressed in
+        profile.buttons[GCInputRightTrigger]?.pressedChangedHandler = { [weak self] _, _, pressed in
             guard pressed else { return }
             Task { @MainActor in self?.gameStepRequest = (1, UUID()) }
         }
@@ -146,27 +161,29 @@ final class ControllerObserver: ObservableObject {
         // `pressedChangedHandler` (button-edge semantics: fires once per press/release), not
         // `valueChangedHandler` (fires continuously while held) - the latter would fire dozens of
         // times a second while a direction is held, jumping through focus far too fast.
-        gamepad.dpad.up.pressedChangedHandler = { [weak self] _, _, pressed in
-            guard pressed else { return }
-            Task { @MainActor in self?.directionPress = (.up, UUID()) }
+        if let dpad = profile.dpads[GCInputDirectionPad] {
+            dpad.up.pressedChangedHandler = { [weak self] _, _, pressed in
+                guard pressed else { return }
+                Task { @MainActor in self?.directionPress = (.up, UUID()) }
+            }
+            dpad.down.pressedChangedHandler = { [weak self] _, _, pressed in
+                guard pressed else { return }
+                Task { @MainActor in self?.directionPress = (.down, UUID()) }
+            }
+            dpad.left.pressedChangedHandler = { [weak self] _, _, pressed in
+                guard pressed else { return }
+                Task { @MainActor in self?.directionPress = (.left, UUID()) }
+            }
+            dpad.right.pressedChangedHandler = { [weak self] _, _, pressed in
+                guard pressed else { return }
+                Task { @MainActor in self?.directionPress = (.right, UUID()) }
+            }
         }
-        gamepad.dpad.down.pressedChangedHandler = { [weak self] _, _, pressed in
-            guard pressed else { return }
-            Task { @MainActor in self?.directionPress = (.down, UUID()) }
-        }
-        gamepad.dpad.left.pressedChangedHandler = { [weak self] _, _, pressed in
-            guard pressed else { return }
-            Task { @MainActor in self?.directionPress = (.left, UUID()) }
-        }
-        gamepad.dpad.right.pressedChangedHandler = { [weak self] _, _, pressed in
-            guard pressed else { return }
-            Task { @MainActor in self?.directionPress = (.right, UUID()) }
-        }
-        gamepad.buttonA.pressedChangedHandler = { [weak self] _, _, pressed in
+        profile.buttons[GCInputButtonA]?.pressedChangedHandler = { [weak self] _, _, pressed in
             guard pressed else { return }
             Task { @MainActor in self?.primaryPress = UUID() }
         }
-        gamepad.buttonB.pressedChangedHandler = { [weak self] _, _, pressed in
+        profile.buttons[GCInputButtonB]?.pressedChangedHandler = { [weak self] _, _, pressed in
             guard pressed else { return }
             Task { @MainActor in self?.secondaryPress = UUID() }
         }
