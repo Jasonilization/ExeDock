@@ -67,21 +67,51 @@ final class ControllerObserver: ObservableObject {
     private var activeGamepad: GCExtendedGamepad? { GCController.controllers().first?.extendedGamepad }
 
     private init() {
-        isConnected = !GCController.controllers().isEmpty
-        if let controller = GCController.controllers().first {
+        let atLaunch = GCController.controllers()
+        isConnected = !atLaunch.isEmpty
+        // Real diagnostics for a real, previously-unresolved report - "controller mode doesn't
+        // work, I don't see highlights, can't control anything," with the connect banner/glow
+        // never appearing either, meaning this app's GameController detection itself never fires,
+        // not just something downstream of it. Nothing here was reproducible without real
+        // hardware, so this is the actual, checkable evidence trail for next time instead of a
+        // second guess - Settings -> Open Logs Folder -> diagnostics.log.
+        DiagnosticsLog.log("ControllerObserver: \(atLaunch.count) controller(s) present at launch" + (atLaunch.isEmpty ? "" : ": " + atLaunch.map { Self.describe($0) }.joined(separator: ", ")))
+        if let controller = atLaunch.first {
             attachGlobalHandlers(to: controller)
+        }
+        // Two real, documented gaps a controller that's paired at the OS level but not yet
+        // surfaced to this app can fall into - neither was ever set anywhere in this codebase.
+        // `shouldMonitorBackgroundEvents` governs whether GCController keeps delivering events
+        // once this app isn't the frontmost/key one (the default is *off*); actively kicking off
+        // discovery is Apple's own recommended way to make sure an already-paired Bluetooth
+        // controller gets handed to this app promptly rather than only whenever the system
+        // happens to get around to it.
+        GCController.shouldMonitorBackgroundEvents = true
+        GCController.startWirelessControllerDiscovery {
+            DiagnosticsLog.log("ControllerObserver: startWirelessControllerDiscovery finished - \(GCController.controllers().count) controller(s) now visible")
         }
         NotificationCenter.default.addObserver(forName: .GCControllerDidConnect, object: nil, queue: .main) { [weak self] notification in
             Task { @MainActor in self?.handleConnect(notification) }
         }
-        NotificationCenter.default.addObserver(forName: .GCControllerDidDisconnect, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+        NotificationCenter.default.addObserver(forName: .GCControllerDidDisconnect, object: nil, queue: .main) { [weak self] notification in
+            let controller = notification.object as? GCController
+            Task { @MainActor in
+                let name = controller.map { Self.describe($0) } ?? "unknown"
+                DiagnosticsLog.log("ControllerObserver: disconnected - \(name)")
+                self?.refresh()
+            }
         }
     }
 
+    private static func describe(_ controller: GCController) -> String {
+        "\(controller.vendorName ?? "unnamed") (extendedGamepad: \(controller.extendedGamepad != nil), physicalInputProfile: \(type(of: controller.physicalInputProfile)))"
+    }
+
     private func handleConnect(_ notification: Notification) {
+        let controller = notification.object as? GCController
+        DiagnosticsLog.log("ControllerObserver: GCControllerDidConnect fired - " + (controller.map { Self.describe($0) } ?? "notification.object was not a GCController"))
         refresh(justConnected: true)
-        if let controller = notification.object as? GCController {
+        if let controller {
             attachGlobalHandlers(to: controller)
         }
     }
