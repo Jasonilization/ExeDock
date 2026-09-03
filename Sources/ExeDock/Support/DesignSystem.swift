@@ -324,6 +324,13 @@ private struct CardSurface: ViewModifier {
 
         let step1 = content
             .fontDesign(skin.fontDesign)
+            // A real per-game tint behind the fill itself - not just wherever a skin's own accent
+            // already shows (many skins' real card fill, Brutalist and Luxury included, never uses
+            // accent color at all, so a tint that only ever reached borders/buttons had nowhere to
+            // show on those). Sits behind the translucent material fill, tinting it the way a
+            // colored surface behind real frosted glass would, rather than a flat wash on top of
+            // the content.
+            .background(alignment: .center) { if let accentOverride { shape.fill(accentOverride.opacity(0.4)) } }
             .background(fillStyle, in: shape)
         let step2 = step1
             .background(glassSurface(shape: shape))
@@ -418,6 +425,14 @@ private struct TileSurface: ViewModifier {
             .background(softHighlight(shape: shape))
             .clipShape(shape)
         let step2 = step1
+            // A real per-game tint - laid over the art itself (unlike CardSurface's background
+            // wash, real art here is opaque and would hide anything placed behind it), the same
+            // subtle color cast a colored gel over a photo gives.
+            .overlay {
+                if let accentOverride {
+                    shape.fill(accentOverride.opacity(0.32))
+                }
+            }
             .overlay(shape.strokeBorder(borderColor, lineWidth: skin.borderWidth))
         let step3 = step2
             .background(hardShadowTwin(shape: shape, color: hardShadow, offset: offset))
@@ -606,6 +621,19 @@ extension View {
     /// view anywhere just appends this with no extra state of its own.
     func skinArtTreatment() -> some View {
         modifier(SkinArtTreatment())
+    }
+
+    /// The same real per-game color cast `tileSurface(accentOverride:)`/`cardSurface
+    /// (accentOverride:)` apply, for the handful of places (hero banners in Shelves/Sidebar/
+    /// Spotlight) that render raw art directly rather than going through either of those - `nil`
+    /// leaves the art untouched.
+    @ViewBuilder
+    func gameAccentTint(_ color: Color?) -> some View {
+        if let color {
+            overlay(color.opacity(0.32))
+        } else {
+            self
+        }
     }
 }
 

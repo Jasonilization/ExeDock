@@ -16,6 +16,20 @@ enum GameArtColor {
 
     private static let context = CIContext(options: [.useSoftwareRenderer: false])
 
+    /// Keeps `color`'s real hue but pulls saturation and brightness into a range that actually
+    /// reads as a color instead of a gray - a raw pixel average is desaturated far more often than
+    /// not (see `dominantColor`'s own doc comment for why), and a near-black or near-white result
+    /// is equally useless as a tint (barely visible against either a dark or a light card). Hue is
+    /// never touched - this is *this image's own* color, just made usable, not a different one.
+    private static func vivid(_ color: NSColor) -> NSColor {
+        guard let hsb = color.usingColorSpace(.deviceRGB) else { return color }
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        hsb.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        let vividSaturation = max(s, 0.5)
+        let vividBrightness = min(max(b, 0.35), 0.8)
+        return NSColor(hue: h, saturation: vividSaturation, brightness: vividBrightness, alpha: 1)
+    }
+
     /// The already-cached result for `path`, if any - safe to call from a view's own body since it
     /// never does any real work, just an `NSCache` lookup. `nil` until `dominantColor(forImagePath:)`
     /// has resolved at least once for this path.
@@ -52,10 +66,18 @@ enum GameArtColor {
                 bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
                 format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB()
             )
-            let color = NSColor(
+            let rawAverage = NSColor(
                 red: CGFloat(pixel[0]) / 255, green: CGFloat(pixel[1]) / 255,
                 blue: CGFloat(pixel[2]) / 255, alpha: 1
             )
+            // A literal pixel average over real cover art - much of which is a mostly-white/light
+            // background with a logo or a few characters on it - lands on a pale, low-saturation
+            // gray far more often than not (confirmed live: a real chalkboard-style cover's own
+            // average came back essentially neutral). That's mathematically correct but useless as
+            // an *accent* - nothing to actually tint anything with. Boosting saturation/normalizing
+            // brightness afterward (keeping the real hue this image actually has) is the standard
+            // fix real "extract an accent from this image" features use, not a second average.
+            let color = vivid(rawAverage)
             cache.setObject(color, forKey: path as NSString)
             return Color(nsColor: color)
         }.value

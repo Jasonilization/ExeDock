@@ -170,7 +170,7 @@ struct LibraryShelvesLayout: View {
             VStack(alignment: .leading, spacing: 0) {
                 if let featured {
                     ZStack(alignment: .bottomLeading) {
-                        artView(path: featuredPresentation?.artPath, id: featured.id).frame(maxWidth: .infinity).frame(height: 300).skinArtTreatment().clipped()
+                        artView(path: featuredPresentation?.artPath, id: featured.id).frame(maxWidth: .infinity).frame(height: 300).skinArtTreatment().gameAccentTint(featuredAccent).clipped()
                         LinearGradient(colors: [.clear, .black.opacity(0.78)], startPoint: .top, endPoint: .bottom).frame(maxWidth: .infinity, maxHeight: 300)
                         VStack(alignment: .leading, spacing: 8) {
                             Text(runningTracker.runningGames[featured.id] != nil ? "CONTINUE PLAYING" : "FEATURED")
@@ -312,6 +312,7 @@ struct LibrarySidebarLayout: View {
                         artView(path: presentation?.artPath, id: selected.id)
                             .frame(width: max(0, geo.size.width - Self.sidebarWidth), height: geo.size.height)
                             .skinArtTreatment()
+                            .gameAccentTint(selectedAccent)
                             .clipped()
                         LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .center, endPoint: .bottom)
                         VStack(alignment: .leading, spacing: 10) {
