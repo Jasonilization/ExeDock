@@ -73,9 +73,13 @@ function handleSearchInput(value) {
 // consistent bridge point no matter which skin's markup wraps it.
 const click = (id) => `onclick="postClick('${id}')"`;
 
-/* ================= 1. Luxury ================= */
-function design_luxury(games, meta) {
-  const cards = games.map(gm => `
+// Each skin's own real .card markup, factored out from its full design_* page so a *grid-shaped
+// region embedded inside a native SwiftUI layout* (Steam-style's poster grid, Spotlight's own
+// grid section) can render the exact same cards Grid itself does - not a second approximation of
+// them - without also pulling in that skin's topbar/h1. design_* below call these same functions,
+// so there is exactly one place each skin's card markup is written.
+const CARDS = {
+  luxury: (games) => games.map(gm => `
     <div class="card" ${click(gm.id)}>
       <div class="art" style="${artStyle(gm, 45, 135)}">
         ${gm.custom ? '<span class="badge">Custom</span>' : ''}
@@ -86,7 +90,64 @@ function design_luxury(games, meta) {
         <p class="desc">${esc(gm.desc)}</p>
         ${gm.running ? '<div class="run"><span class="dot"></span>Running</div>' : '<button class="cta">View Details</button>'}
       </div>
-    </div>`).join('');
+    </div>`).join(''),
+
+  glass: (games) => games.map(gm => `
+    <div class="card" ${click(gm.id)}>
+      <div class="art" style="${artStyle(gm, 60, 120)}">${gm.custom ? '<span class="badge">Custom</span>' : ''}</div>
+      <div class="body">
+        <p class="title">${esc(gm.title)}</p>
+        <p class="genre">${esc((gm.genre || '').toUpperCase())}</p>
+        <p class="desc">${esc(gm.desc)}</p>
+        ${gm.running ? '<div class="run"><span class="pulse"></span>Running</div>' : '<button class="cta">Launch</button>'}
+      </div>
+    </div>`).join(''),
+
+  brutalist: (games) => games.map(gm => `
+    <div class="card" ${click(gm.id)}>
+      <div class="art" style="${artStyle(gm, 80, 60)}">${gm.custom ? '<span class="badge">Custom</span>' : ''}</div>
+      <div class="body">
+        <p class="title">${esc(gm.title)}</p>
+        <span class="genre">${esc(gm.genre)}</span>
+        <p class="desc">${esc(gm.desc)}</p>
+        ${gm.running ? '<button class="cta run">● Running</button>' : '<button class="cta">Launch →</button>'}
+      </div>
+    </div>`).join(''),
+
+  cyber: (games) => games.map(gm => `
+    <div class="card" ${click(gm.id)}>
+      <div class="art" style="${artStyle(gm, 70, 140)}">${gm.custom ? '<span class="badge">CUSTOM</span>' : ''}</div>
+      <div class="body">
+        <p class="title">${esc(gm.title)}</p>
+        <p class="genre">${esc(gm.genre)}</p>
+        <p class="desc">${esc(gm.desc)}</p>
+        ${gm.running ? '<button class="cta run">● RUNNING</button>' : '<button class="cta">LAUNCH ▸</button>'}
+      </div>
+    </div>`).join(''),
+
+  soft: (games) => games.map(gm => `
+    <div class="card" ${click(gm.id)}>
+      <div class="art" style="${artStyle(gm, 25, 100)}">${gm.custom ? '<span class="badge">Custom</span>' : ''}</div>
+      <p class="title">${esc(gm.title)}</p>
+      <p class="genre">${esc(gm.genre)}</p>
+      <p class="desc">${esc(gm.desc)}</p>
+      ${gm.running ? '<button class="cta run">● Running</button>' : '<button class="cta">Launch</button>'}
+    </div>`).join(''),
+
+  pixel: (games) => games.map(gm => `
+    <div class="card" ${click(gm.id)}>
+      <div class="art" style="${artStyle(gm, 90, 100)}">${gm.custom ? '<span class="badge">MOD</span>' : ''}</div>
+      <div class="body">
+        <p class="title">${esc(gm.title)}</p>
+        <p class="genre">${esc(gm.genre)}</p>
+        <p class="desc">${esc(gm.desc)}</p>
+        ${gm.running ? '<button class="cta run">■ LIVE</button>' : '<button class="cta">START ▶</button>'}
+      </div>
+    </div>`).join(''),
+};
+
+/* ================= 1. Luxury ================= */
+function design_luxury(games, meta) {
   return `
     <div class="lux">
       <div class="topbar">
@@ -98,23 +159,13 @@ function design_luxury(games, meta) {
       <main>
         <h1>Your Library</h1>
         <p class="kicker">Installed and ready to play</p>
-        <div class="grid">${cards}</div>
+        <div class="grid">${CARDS.luxury(games)}</div>
       </main>
     </div>`;
 }
 
 /* ================= 2. Glass ================= */
 function design_glass(games, meta) {
-  const cards = games.map(gm => `
-    <div class="card" ${click(gm.id)}>
-      <div class="art" style="${artStyle(gm, 60, 120)}">${gm.custom ? '<span class="badge">Custom</span>' : ''}</div>
-      <div class="body">
-        <p class="title">${esc(gm.title)}</p>
-        <p class="genre">${esc((gm.genre || '').toUpperCase())}</p>
-        <p class="desc">${esc(gm.desc)}</p>
-        ${gm.running ? '<div class="run"><span class="pulse"></span>Running</div>' : '<button class="cta">Launch</button>'}
-      </div>
-    </div>`).join('');
   return `
     <div class="glass">
       <div class="topbar">
@@ -122,26 +173,16 @@ function design_glass(games, meta) {
         <div class="spacer"></div>
         <input id="search-input" class="search" type="text" placeholder="Search…" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)">
       </div>
-      <main><h1>Continue Playing</h1><div class="grid">${cards}</div></main>
+      <main><h1>Continue Playing</h1><div class="grid">${CARDS.glass(games)}</div></main>
     </div>`;
 }
 
 /* ================= 3. Brutalist ================= */
 function design_brutal(games, meta) {
-  const cards = games.map(gm => `
-    <div class="card" ${click(gm.id)}>
-      <div class="art" style="${artStyle(gm, 80, 60)}">${gm.custom ? '<span class="badge">Custom</span>' : ''}</div>
-      <div class="body">
-        <p class="title">${esc(gm.title)}</p>
-        <span class="genre">${esc(gm.genre)}</span>
-        <p class="desc">${esc(gm.desc)}</p>
-        ${gm.running ? '<button class="cta run">● Running</button>' : '<button class="cta">Launch →</button>'}
-      </div>
-    </div>`).join('');
   return `
     <div class="brut">
       <div class="topbar"><div class="who">PLAYDOCK</div><div class="count">${games.length} GAMES</div><input id="search-input" class="search" type="text" placeholder="SEARCH YOUR GAMES_" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
-      <main><h1>Library</h1><div class="grid">${cards}</div></main>
+      <main><h1>Library</h1><div class="grid">${CARDS.brutalist(games)}</div></main>
     </div>`;
 }
 
@@ -149,16 +190,6 @@ function design_brutal(games, meta) {
 function design_cyber(games, meta) {
   const runningCount = games.filter(g => g.running).length;
   const customCount = games.filter(g => g.custom).length;
-  const cards = games.map(gm => `
-    <div class="card" ${click(gm.id)}>
-      <div class="art" style="${artStyle(gm, 70, 140)}">${gm.custom ? '<span class="badge">CUSTOM</span>' : ''}</div>
-      <div class="body">
-        <p class="title">${esc(gm.title)}</p>
-        <p class="genre">${esc(gm.genre)}</p>
-        <p class="desc">${esc(gm.desc)}</p>
-        ${gm.running ? '<button class="cta run">● RUNNING</button>' : '<button class="cta">LAUNCH ▸</button>'}
-      </div>
-    </div>`).join('');
   // A real status line instead of invented "connection secure" flavor text - the actual counts a
   // library owner would want at a glance, not stock hacker-movie dialogue.
   const kicker = runningCount > 0
@@ -167,43 +198,25 @@ function design_cyber(games, meta) {
   return `
     <div class="cyber">
       <div class="topbar"><span class="who">PLAY//DOCK</span><span class="count">${esc(meta.user)} · ${games.length} games</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="&gt; search_" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
-      <main><h1>LIBRARY.SYS</h1><p class="kicker">${esc(kicker)}</p><div class="grid">${cards}</div></main>
+      <main><h1>LIBRARY.SYS</h1><p class="kicker">${esc(kicker)}</p><div class="grid">${CARDS.cyber(games)}</div></main>
     </div>`;
 }
 
 /* ================= 5. Soft ================= */
 function design_neu(games, meta) {
-  const cards = games.map(gm => `
-    <div class="card" ${click(gm.id)}>
-      <div class="art" style="${artStyle(gm, 25, 100)}">${gm.custom ? '<span class="badge">Custom</span>' : ''}</div>
-      <p class="title">${esc(gm.title)}</p>
-      <p class="genre">${esc(gm.genre)}</p>
-      <p class="desc">${esc(gm.desc)}</p>
-      ${gm.running ? '<button class="cta run">● Running</button>' : '<button class="cta">Launch</button>'}
-    </div>`).join('');
   return `
     <div class="neu">
       <div class="topbar"><div class="avatar"></div><div><div class="who">${esc(meta.user)}</div><div class="count">${games.length} games</div></div><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="Search your games" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
-      <main><h1>Your Library</h1><div class="grid">${cards}</div></main>
+      <main><h1>Your Library</h1><div class="grid">${CARDS.soft(games)}</div></main>
     </div>`;
 }
 
 /* ================= 6. Retro pixel / arcade ================= */
 function design_pixel(games, meta) {
-  const cards = games.map(gm => `
-    <div class="card" ${click(gm.id)}>
-      <div class="art" style="${artStyle(gm, 90, 100)}">${gm.custom ? '<span class="badge">MOD</span>' : ''}</div>
-      <div class="body">
-        <p class="title">${esc(gm.title)}</p>
-        <p class="genre">${esc(gm.genre)}</p>
-        <p class="desc">${esc(gm.desc)}</p>
-        ${gm.running ? '<button class="cta run">■ LIVE</button>' : '<button class="cta">START ▶</button>'}
-      </div>
-    </div>`).join('');
   return `
     <div class="pix">
       <div class="topbar"><span class="who">PLAYDOCK</span><span class="count">P1: ${esc(meta.user.toUpperCase())} · ${games.length} CARTS</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="FIND GAME_" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
-      <main><h1>SELECT GAME</h1><div class="grid">${cards}</div></main>
+      <main><h1>SELECT GAME</h1><div class="grid">${CARDS.pixel(games)}</div></main>
       <div class="prompt">PRESS A TO SELECT</div>
     </div>`;
 }
@@ -241,6 +254,13 @@ const DESIGNS = {
   minimal: design_list,
 };
 
+// The CSS scoping class each skin's own markup uses - not the same string as its DESIGNS/CARDS
+// key (skins.css was authored with these shorter names before the skins themselves were renamed
+// to plainer ones).
+const SKIN_CLASS = {
+  luxury: 'lux', glass: 'glass', brutalist: 'brut', cyber: 'cyber', soft: 'neu', pixel: 'pix',
+};
+
 // Called from Swift via evaluateJavaScript after every load and whenever the underlying data or
 // active skin/theme changes - a full re-render each time is simple, correct, and cheap enough for a
 // library of even a few hundred games. QUERY is deliberately *not* reset here - a fresh push of
@@ -252,4 +272,24 @@ window.PlaydockRender = function (skinKey, gamesJSON, metaJSON) {
   CURRENT_SKIN = skinKey;
   document.documentElement.setAttribute('data-stage-theme', META.theme === 'dark' ? 'dark' : 'light');
   doRender();
+};
+
+// A grid-shaped fragment only - real card markup (CARDS above), wrapped in just enough of the
+// skin's own class scoping for its card CSS to apply, with no topbar/h1/kicker. Used by
+// SkinWebGridFragmentView to embed a real, skin-accurate card grid inside a native SwiftUI layout
+// (Steam-style's poster grid, Spotlight's own grid section) - those are structurally the exact
+// same shape Grid itself is (a wrapping grid of cards), so this reuses the real thing rather than
+// a second hand-ported approximation of it. Minimal has no `.grid`/`.card` markup at all in the
+// real mockup (it's genuinely list-shaped even in Grid mode), so it isn't in CARDS and callers
+// should keep using a native list for it.
+window.PlaydockRenderGridFragment = function (skinKey, gamesJSON, themeJSON) {
+  const stage = document.getElementById('stage');
+  let games = [];
+  try { games = JSON.parse(gamesJSON); } catch (e) { games = []; }
+  let theme = 'light';
+  try { theme = JSON.parse(themeJSON).theme === 'dark' ? 'dark' : 'light'; } catch (e) {}
+  document.documentElement.setAttribute('data-stage-theme', theme);
+  const cardsFn = CARDS[skinKey] || CARDS.luxury;
+  const skinClass = SKIN_CLASS[skinKey] || SKIN_CLASS.luxury;
+  stage.innerHTML = `<div class="${skinClass} grid-fragment"><div class="grid">${cardsFn(games)}</div></div>`;
 };

@@ -14,6 +14,12 @@ html,body{margin:0;padding:0;background:transparent;}
 input.search{outline:none;-webkit-appearance:none;appearance:none;font-family:inherit;color:inherit;}
 input.search::placeholder{color:inherit;opacity:0.6;}
 
+/* A grid-shaped region embedded inside a native SwiftUI layout (Steam-style's poster grid,
+   Spotlight's own grid section) - the real per-skin .card markup with none of the full page's own
+   background/min-height/topbar, since the native layout around it already provides those. */
+.grid-fragment{min-height:0 !important;background:transparent !important;}
+.grid-fragment .grid{padding:16px;}
+
 /* ================= 1. Luxury (native macOS) ================= */
 .lux{ --bg:#f6f5f3; --panel:#ffffffcc; --line:rgba(0,0,0,.08); --fg:#1c1b19; --sub:#6b6863; --accent:#b08d57; }
 [data-stage-theme="dark"] .lux{ --bg:#151412; --panel:#211f1caa; --line:rgba(255,255,255,.08); --fg:#f1efe9; --sub:#9b968c; }

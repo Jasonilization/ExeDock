@@ -102,6 +102,9 @@ private struct LibraryEntryTile: View {
     /// this to hand back whichever real Steam art actually fits instead of one shape everyone
     /// force-crops.
     var artShape: LibraryPresentation.Shape = .landscape
+    /// A visible controller-focus ring - only ever true while a controller is actually connected
+    /// and this specific tile is the one D-pad navigation currently has selected.
+    var isFocused: Bool = false
     let onOpen: () -> Void
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     @LocalState private var presentation: LibraryPresentation?
@@ -117,6 +120,7 @@ private struct LibraryEntryTile: View {
                     .frame(width: width, height: height)
                     .skinArtTreatment()
                     .tileSurface(isHovering: isHovering, accentOverride: gameAccent)
+                    .focusRing(isFocused)
                     .onHover { isHovering = $0 }
                 if presentation?.isCustom == true {
                     Text("CUSTOM").font(.system(size: 9, weight: .bold)).padding(4).background(.purple, in: Capsule()).foregroundStyle(.white).padding(6)
@@ -233,12 +237,20 @@ struct LibrarySidebarLayout: View {
     let entries: [LibraryEntry]
     let onOpenDetail: (LibraryEntry) -> Void
     @ObservedObject private var runningTracker = RunningGameTracker.shared
+    @ObservedObject private var controllerObserver = ControllerObserver.shared
     @LocalState private var selectedID: String?
     @LocalState private var presentation: LibraryPresentation?
     @LocalState private var selectedAccent: Color?
 
     private var selected: LibraryEntry? {
         entries.first { $0.id == selectedID } ?? entries.first
+    }
+
+    private func moveSelection(by delta: Int) {
+        guard !entries.isEmpty else { return }
+        let currentIndex = entries.firstIndex { $0.id == selected?.id } ?? 0
+        let newIndex = min(max(0, currentIndex + delta), entries.count - 1)
+        selectedID = entries[newIndex].id
     }
 
     /// A fixed sidebar column's width, in points - kept as a named constant since both the sidebar
@@ -258,6 +270,7 @@ struct LibrarySidebarLayout: View {
         // grid's own overlap bug.
         GeometryReader { geo in
             HStack(spacing: 0) {
+                ScrollViewReader { scrollProxy in
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         ForEach(entries) { entry in
@@ -273,9 +286,23 @@ struct LibrarySidebarLayout: View {
                             .padding(.horizontal, 8)
                             .contentShape(Rectangle())
                             .onTapGesture { selectedID = entry.id }
+                            .id(entry.id)
                         }
                     }
                     .padding(.vertical, 8)
+                }
+                .onChange(of: controllerObserver.directionPress?.token) { _ in
+                    guard let direction = controllerObserver.directionPress?.direction else { return }
+                    switch direction {
+                    case .left, .up: moveSelection(by: -1)
+                    case .right, .down: moveSelection(by: 1)
+                    }
+                    if let selected { withAnimation { scrollProxy.scrollTo(selected.id, anchor: .center) } }
+                }
+                .onChange(of: controllerObserver.primaryPress) { _ in
+                    guard controllerObserver.isConnected, let selected else { return }
+                    onOpenDetail(selected)
+                }
                 }
                 .background(.regularMaterial)
                 .frame(width: Self.sidebarWidth, height: geo.size.height)
@@ -318,6 +345,8 @@ struct LibraryListLayout: View {
     let entries: [LibraryEntry]
     let onOpenDetail: (LibraryEntry) -> Void
     @ObservedObject private var runningTracker = RunningGameTracker.shared
+    @LocalState private var focusedIndex: Int?
+    @ObservedObject private var controllerObserver = ControllerObserver.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -329,28 +358,40 @@ struct LibraryListLayout: View {
             .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
             .padding(.horizontal, 24).padding(.vertical, 8)
             Divider()
-            ScrollView {
-                ForEach(entries) { entry in
-                    HStack(spacing: 12) {
-                        SmallArtIcon(entry: entry, size: 30, cornerRadius: 6)
-                        HStack(spacing: 6) {
-                            SkinTitleText(text: entry.name, size: 15)
-                            if case .custom = entry { Text("CUSTOM").font(.caption2.bold()).foregroundStyle(.purple) }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        Group {
-                            if runningTracker.runningGames[entry.id] != nil {
-                                Label("Running", systemImage: "circle.fill").font(.caption.weight(.semibold)).foregroundStyle(.green)
-                            } else {
-                                Text("Details →").font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                        HStack(spacing: 12) {
+                            SmallArtIcon(entry: entry, size: 30, cornerRadius: 6)
+                            HStack(spacing: 6) {
+                                SkinTitleText(text: entry.name, size: 15)
+                                if case .custom = entry { Text("CUSTOM").font(.caption2.bold()).foregroundStyle(.purple) }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            Group {
+                                if runningTracker.runningGames[entry.id] != nil {
+                                    Label("Running", systemImage: "circle.fill").font(.caption.weight(.semibold)).foregroundStyle(.green)
+                                } else {
+                                    Text("Details →").font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
+                                }
+                            }
+                            .frame(width: 110, alignment: .trailing)
                         }
-                        .frame(width: 110, alignment: .trailing)
+                        .padding(.horizontal, 24).padding(.vertical, 9)
+                        .background(controllerObserver.isConnected && focusedIndex == index ? Color.accentColor.opacity(0.15) : .clear)
+                        .contentShape(Rectangle())
+                        .onTapGesture { onOpenDetail(entry) }
+                        .id(entry.id)
+                        Divider()
                     }
-                    .padding(.horizontal, 24).padding(.vertical, 9)
-                    .contentShape(Rectangle())
-                    .onTapGesture { onOpenDetail(entry) }
-                    Divider()
+                }
+                .controllerLinearFocus(focusedIndex: $focusedIndex, count: entries.count) { index in
+                    guard entries.indices.contains(index) else { return }
+                    onOpenDetail(entries[index])
+                }
+                .onChange(of: focusedIndex) { index in
+                    guard let index, entries.indices.contains(index) else { return }
+                    withAnimation { scrollProxy.scrollTo(entries[index].id, anchor: .center) }
                 }
             }
         }
@@ -361,12 +402,29 @@ struct LibraryListLayout: View {
 
 struct LibrarySteamStyleLayout: View {
     let entries: [LibraryEntry]
+    /// Real per-skin `.card` markup for every entry, resolved by the caller (see
+    /// `GameModeView.webGridEntries`) - the poster grid below renders these through
+    /// `SkinWebGridFragmentView`, the exact same real HTML/CSS Grid itself uses, not a native
+    /// approximation of it. Filtered down to `filtered`'s own id set below.
+    let webGridEntries: [SkinWebGridEntry]
+    let skin: PlaydockSkin
+    let isDark: Bool
     let onOpenDetail: (LibraryEntry) -> Void
     @LocalState private var filter = "All Games"
     private let filters = ["All Games", "Custom Games"]
 
     private var filtered: [LibraryEntry] {
         filter == "Custom Games" ? entries.filter { if case .custom = $0 { true } else { false } } : entries
+    }
+
+    private var filteredWebEntries: [SkinWebGridEntry] {
+        let ids = Set(filtered.map(\.id))
+        return webGridEntries.filter { ids.contains($0.id) }
+    }
+
+    private func openByID(_ id: String) {
+        guard let entry = entries.first(where: { $0.id == id }) else { return }
+        onOpenDetail(entry)
     }
 
     var body: some View {
@@ -386,13 +444,13 @@ struct LibrarySteamStyleLayout: View {
             .frame(width: 170)
             .background(Color(nsColor: .underPageBackgroundColor))
 
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 170), spacing: 12)], spacing: 12) {
-                    ForEach(filtered) { entry in
-                        LibraryEntryTile(entry: entry, width: 154, height: 210, artShape: .portrait) { onOpenDetail(entry) }
-                    }
-                }
-                .padding(18)
+            // A real, finite frame - a WKWebView with no explicit size proposal from its own
+            // SwiftUI ancestor doesn't reliably size itself, the same fix Grid's own
+            // SkinWebGridView already needs. The page's own real content scrolls natively inside
+            // the WebView, same as Grid.
+            GeometryReader { geo in
+                SkinWebGridFragmentView(skin: skin, entries: filteredWebEntries, isDark: isDark, onOpen: openByID)
+                    .frame(width: geo.size.width, height: geo.size.height)
             }
         }
     }
@@ -405,33 +463,59 @@ struct LibraryCarouselLayout: View {
     let onOpenDetail: (LibraryEntry) -> Void
     @LocalState private var focused: String?
     @LocalState private var presentation: LibraryPresentation?
+    @ObservedObject private var controllerObserver = ControllerObserver.shared
 
     private var focusedEntry: LibraryEntry? { entries.first { $0.id == focused } ?? entries.first }
+    private var focusedIndex: Int { entries.firstIndex { $0.id == focusedEntry?.id } ?? 0 }
+
+    /// D-pad left/right moves the exact same `focused` state a real hover already drives, so a
+    /// controller and a mouse land on identical visual feedback (the tile's own grow/shrink) -
+    /// not a second, stacked focus ring on top of it.
+    private func moveFocus(by delta: Int) {
+        guard !entries.isEmpty else { return }
+        let newIndex = min(max(0, focusedIndex + delta), entries.count - 1)
+        focused = entries[newIndex].id
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 22) {
-                    ForEach(entries) { entry in
-                        let isFocused = entry.id == (focused ?? entries.first?.id)
-                        LibraryEntryTile(entry: entry, width: isFocused ? 230 : 185, height: isFocused ? 300 : 240, artShape: .portrait) {
-                            // Hover already sets focus for a real mouse/trackpad, so by the time a
-                            // click lands the tile is already focused and can open straight away -
-                            // "carasoul should track mouse focus," and this also fixes a genuine
-                            // click-swallowing bug the old two-step tap dance had: growing a tile on
-                            // its first tap reflows every tile after it in the row, so a *second*
-                            // click aimed at the same screen position could land on a neighbor that
-                            // had shifted into it instead of the now-larger focused tile.
-                            onOpenDetail(entry)
-                        }
-                        .scaleEffect(isFocused ? 1 : 0.96)
-                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: focused)
-                        .onHover { isHovering in
-                            if isHovering { focused = entry.id }
+            ScrollViewReader { scrollProxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 22) {
+                        ForEach(entries) { entry in
+                            let isFocused = entry.id == (focused ?? entries.first?.id)
+                            LibraryEntryTile(entry: entry, width: isFocused ? 230 : 185, height: isFocused ? 300 : 240, artShape: .portrait) {
+                                // Hover already sets focus for a real mouse/trackpad, so by the time a
+                                // click lands the tile is already focused and can open straight away -
+                                // and this also fixes a genuine click-swallowing bug the old two-step
+                                // tap dance had: growing a tile on its first tap reflows every tile
+                                // after it in the row, so a *second* click aimed at the same screen
+                                // position could land on a neighbor that had shifted into it instead
+                                // of the now-larger focused tile.
+                                onOpenDetail(entry)
+                            }
+                            .scaleEffect(isFocused ? 1 : 0.96)
+                            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: focused)
+                            .onHover { isHovering in
+                                if isHovering { focused = entry.id }
+                            }
+                            .id(entry.id)
                         }
                     }
+                    .padding(.horizontal, 32).padding(.top, 20)
                 }
-                .padding(.horizontal, 32).padding(.top, 20)
+                .onChange(of: controllerObserver.directionPress?.token) { _ in
+                    guard let direction = controllerObserver.directionPress?.direction else { return }
+                    switch direction {
+                    case .left, .up: moveFocus(by: -1)
+                    case .right, .down: moveFocus(by: 1)
+                    }
+                    withAnimation { scrollProxy.scrollTo(focused, anchor: .center) }
+                }
+                .onChange(of: controllerObserver.primaryPress) { _ in
+                    guard controllerObserver.isConnected, let focusedEntry else { return }
+                    onOpenDetail(focusedEntry)
+                }
             }
             // A fixed-height reserved panel (not conditional on data already being loaded) so the
             // row below never jumps when focus changes or while a fetch is in flight - and, unlike
@@ -474,6 +558,11 @@ struct LibraryCarouselLayout: View {
 /// highlight, Glass/Vapor's translucency) rather than being tied to one skin's own look.
 struct LibrarySpotlightLayout: View {
     let entries: [LibraryEntry]
+    /// See `LibrarySteamStyleLayout.webGridEntries` - identical reasoning, used for the "Also In
+    /// Your Collection" grid section below the hero.
+    let webGridEntries: [SkinWebGridEntry]
+    let skin: PlaydockSkin
+    let isDark: Bool
     let onOpenDetail: (LibraryEntry) -> Void
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     @LocalState private var featuredPresentation: LibraryPresentation?
@@ -498,6 +587,16 @@ struct LibrarySpotlightLayout: View {
         guard let featured, let currentIndex = entries.firstIndex(where: { $0.id == featured.id }), !entries.isEmpty else { return }
         let newIndex = (currentIndex + delta + entries.count) % entries.count
         manualFeaturedID = entries[newIndex].id
+    }
+
+    private var restWebEntries: [SkinWebGridEntry] {
+        let ids = Set(rest.map(\.id))
+        return webGridEntries.filter { ids.contains($0.id) }
+    }
+
+    private func openByID(_ id: String) {
+        guard let entry = entries.first(where: { $0.id == id }) else { return }
+        onOpenDetail(entry)
     }
 
     var body: some View {
@@ -538,12 +637,15 @@ struct LibrarySpotlightLayout: View {
                 if !rest.isEmpty {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("ALSO IN YOUR COLLECTION").font(.caption.weight(.bold)).foregroundStyle(.secondary).padding(.horizontal, 32)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 200, maximum: 240), spacing: 20)], spacing: 24) {
-                            ForEach(rest) { entry in
-                                LibraryEntryTile(entry: entry, width: 210, height: 130) { onOpenDetail(entry) }
-                            }
-                        }
-                        .padding(.horizontal, 32)
+                        // A real, finite frame for the WebView (same reason as Steam-style's own).
+                        // A deliberate fixed height with its own internal scroll, not a content-fit
+                        // one - this section sits inside the outer page ScrollView alongside the
+                        // hero rather than owning the whole window the way Grid does, and SwiftUI
+                        // has no reliable way to ask a WKWebView for its own real content height
+                        // back without a JS-side reporting bridge.
+                        SkinWebGridFragmentView(skin: skin, entries: restWebEntries, isDark: isDark, onOpen: openByID)
+                            .frame(height: 700)
+                            .padding(.horizontal, 32)
                     }
                 }
             }

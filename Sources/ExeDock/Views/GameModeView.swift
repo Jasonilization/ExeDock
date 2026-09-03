@@ -257,6 +257,15 @@ struct GameModeView: View {
                     .task(id: libraryEntries.map(\.id)) {
                         await resolveLibraryPresentations()
                     }
+                } else if libraryLayout == .steam || libraryLayout == .spotlight {
+                    // These two embed a real, WKWebView-rendered card grid for their own
+                    // grid-shaped region (see SkinWebGridFragmentView) rather than a native
+                    // SwiftUI approximation - it needs the same real presentations Grid's own
+                    // webGridEntries reads from.
+                    alternateLayout
+                        .task(id: libraryEntries.map(\.id)) {
+                            await resolveLibraryPresentations()
+                        }
                 } else {
                     // Every non-grid layout is a genuinely different structure - some own their
                     // own sidebar/scrolling entirely (Sidebar, Steam-style), so they render full-
@@ -801,9 +810,9 @@ struct GameModeView: View {
         case .shelves: LibraryShelvesLayout(entries: libraryEntries, onOpenDetail: openDetail)
         case .sidebar: LibrarySidebarLayout(entries: libraryEntries, onOpenDetail: openDetail)
         case .list: LibraryListLayout(entries: libraryEntries, onOpenDetail: openDetail)
-        case .steam: LibrarySteamStyleLayout(entries: libraryEntries, onOpenDetail: openDetail)
+        case .steam: LibrarySteamStyleLayout(entries: libraryEntries, webGridEntries: webGridEntries, skin: skin, isDark: systemColorScheme == .dark, onOpenDetail: openDetail)
         case .carousel: LibraryCarouselLayout(entries: libraryEntries, onOpenDetail: openDetail)
-        case .spotlight: LibrarySpotlightLayout(entries: libraryEntries, onOpenDetail: openDetail)
+        case .spotlight: LibrarySpotlightLayout(entries: libraryEntries, webGridEntries: webGridEntries, skin: skin, isDark: systemColorScheme == .dark, onOpenDetail: openDetail)
         }
     }
 
