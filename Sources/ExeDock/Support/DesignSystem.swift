@@ -29,7 +29,7 @@ enum Playdock {
 /// Persisted via `@AppStorage` the same way `isAdvancedMode`/`uiScale` already are elsewhere in
 /// this app.
 enum PlaydockSkin: String, CaseIterable, Identifiable {
-    case luxury, glass, brutalist, cyber, soft, pixel, minimal
+    case luxury, brutalist, cyber, soft, pixel, minimal
     var id: String { rawValue }
 
     static let storageKey = "com.exedock.librarySkin"
@@ -40,7 +40,6 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .luxury: return "Luxury"
-        case .glass: return "Glass"
         case .brutalist: return "Brutalist"
         case .cyber: return "Terminal"
         case .soft: return "Soft"
@@ -54,12 +53,26 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
     var blurb: String {
         switch self {
         case .luxury: return "Warm, understated, gold accents"
-        case .glass: return "Translucent panels, soft color"
         case .brutalist: return "Bold blocks, hard offset shadows"
         case .cyber: return "Dark, cut corners, neon accents"
         case .soft: return "Rounded, gentle depth"
         case .pixel: return "Retro, dotted grid, blocky"
         case .minimal: return "Plain, quiet, no decoration"
+        }
+    }
+
+    /// This skin's own real `.cta`/`.launch` button text, ported straight from skins.js's card
+    /// markup - Grid's real cards each carry a visible per-skin action button, not a generic
+    /// "Details" label, so every native layout's own card/hero button reads the same real word
+    /// Grid's does instead of one word painted over every skin alike.
+    var ctaLabel: String {
+        switch self {
+        case .luxury: return "View Details"
+        case .brutalist: return "Launch →"
+        case .cyber: return "LAUNCH ▸"
+        case .soft: return "Launch"
+        case .pixel: return "START ▶"
+        case .minimal: return "Launch →"
         }
     }
 
@@ -82,7 +95,6 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
     var accent: Color {
         switch self {
         case .luxury: return Color(red: 0.69, green: 0.55, blue: 0.34)
-        case .glass: return Color(red: 0.49, green: 0.36, blue: 1.0)
         case .brutalist: return Color(red: 1.0, green: 0.30, blue: 0.42)
         // --accent:#00f0ff (dark) / #0092a3 (light) - a bright neon cyan reads fine glowing in
         // the dark but washes out on white, so the real light-mode CSS commits to a deeper teal.
@@ -120,7 +132,7 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
     var fontDesign: Font.Design {
         switch self {
         case .brutalist, .cyber, .pixel: return .monospaced
-        case .glass, .soft: return .rounded
+        case .soft: return .rounded
         default: return .default
         }
     }
@@ -266,24 +278,6 @@ private struct CardSurface: ViewModifier {
         }
     }
 
-    /// Glass's real material. Apple's own Liquid Glass (`glassEffect(_:in:)`, macOS 26+) when it's
-    /// actually available on the running system - a genuine refractive, specular material rendered
-    /// by the system itself, not an approximation of one - falling back to the same manual
-    /// translucent-material blend used before on any older macOS this app still supports.
-    @ViewBuilder
-    private func glassSurface(shape: PlaydockCardShape) -> some View {
-        if skin == .glass {
-            if #available(macOS 26.0, *) {
-                Color.clear.glassEffect(.regular.tint(effectiveAccent.opacity(0.10)), in: shape)
-            } else {
-                ZStack {
-                    shape.fill(.ultraThinMaterial)
-                    shape.fill(.white.opacity(0.06))
-                }
-            }
-        }
-    }
-
     @ViewBuilder
     private func hardShadowTwin(shape: PlaydockCardShape, color: Color?, offset: CGFloat) -> some View {
         if let color {
@@ -298,18 +292,8 @@ private struct CardSurface: ViewModifier {
         let offset: CGFloat = isHovering ? 11 : 7
         let softPair = softShadowHighlight(isDark: colorSchemeIsDark)
 
-        // Glass supplies its own material entirely via glassSurface(shape:) below - real Liquid
-        // Glass where available, so nothing else should fill this layer first.
-        let fillStyle: AnyShapeStyle
-        if skin == .glass {
-            fillStyle = AnyShapeStyle(Color.clear)
-        } else if skin.forcesDarkSurface {
-            fillStyle = AnyShapeStyle(.ultraThinMaterial)
-        } else {
-            fillStyle = AnyShapeStyle(.regularMaterial)
-        }
-
-        let borderOpacity: Double = skin == .glass ? 0.35 : (isHovering ? 0.5 : 0.16)
+        let fillStyle: AnyShapeStyle = skin.forcesDarkSurface ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.regularMaterial)
+        let borderOpacity: Double = isHovering ? 0.5 : 0.16
         let borderColor: Color = hardShadow ?? effectiveAccent.opacity(borderOpacity)
 
         // Soft's own real box-shadow.9px 9px 18px var(--sd) - the mockup's exact color, not a
@@ -333,7 +317,6 @@ private struct CardSurface: ViewModifier {
             .background(alignment: .center) { if let accentOverride { shape.fill(accentOverride.opacity(0.4)) } }
             .background(fillStyle, in: shape)
         let step2 = step1
-            .background(glassSurface(shape: shape))
             .background(softHighlight(shape: shape))
         let step3 = step2
             .overlay(shape.strokeBorder(borderColor, lineWidth: skin.borderWidth))
@@ -359,10 +342,6 @@ private struct TileSurface: ViewModifier {
     var accentOverride: Color?
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
     private var skin: PlaydockSkin { skinOverride ?? (PlaydockSkin(rawValue: skinRaw) ?? .luxury) }
-    private var effectiveAccent: Color {
-        guard let accentOverride else { return skin.accent }
-        return skin.accent.blended(toward: accentOverride, amount: 0.4)
-    }
 
     @ViewBuilder
     private func hardShadowTwin(shape: PlaydockCardShape, color: Color?, offset: CGFloat) -> some View {
@@ -387,29 +366,14 @@ private struct TileSurface: ViewModifier {
 
     private var colorSchemeIsDark: Bool { NSApp.effectiveAppearance.name == .darkAqua }
 
-    /// Real Apple Liquid Glass (macOS 26+) where the system actually supports it, matching
-    /// `CardSurface`'s identical treatment; the same manual translucent blend as before on any
-    /// older macOS this app still supports.
-    @ViewBuilder
-    private func glassSurface(shape: PlaydockCardShape) -> some View {
-        if skin == .glass {
-            if #available(macOS 26.0, *) {
-                Color.clear.glassEffect(.regular.tint(effectiveAccent.opacity(0.10)), in: shape)
-            } else {
-                shape.fill(.ultraThinMaterial)
-            }
-        }
-    }
-
     func body(content: Content) -> some View {
         let shape = PlaydockCardShape(skin: skin, cornerRadius: skin.cardRadius)
         let hardShadow: Color? = hardShadowColor(for: skin)
-        let isGlassy = skin == .glass
         let isSoft = skin == .soft
         let offset: CGFloat = isHovering ? 9 : 6
         let softPair = softShadowHighlight(isDark: colorSchemeIsDark)
 
-        let borderColor: Color = hardShadow ?? (isGlassy ? effectiveAccent.opacity(0.3) : Color.white.opacity(0.12))
+        let borderColor: Color = hardShadow ?? Color.white.opacity(0.12)
         let shadowColor: Color = isSoft ? softPair.shadow : (skin.hasShadow ? .black.opacity(isHovering ? 0.35 : 0.25) : .clear)
         let shadowRadius: CGFloat = isSoft ? 12 : (isHovering ? 12 : 8)
         let shadowX: CGFloat = isSoft ? 7 : 0
@@ -419,9 +383,6 @@ private struct TileSurface: ViewModifier {
         // Broken into typed steps - see CardSurface's own doc comment on this same pattern (a real
         // Swift type-checker limitation with this many chained modifiers + conditional content).
         let step1 = content
-            // Glass's cards are real translucent panels over whatever's behind them
-            // even for a raw art tile - not just a border and shadow bolted onto opaque art.
-            .background(glassSurface(shape: shape))
             .background(softHighlight(shape: shape))
             .clipShape(shape)
         let step2 = step1
@@ -458,19 +419,27 @@ struct PlaydockButtonStyle: ButtonStyle {
     var skinOverride: PlaydockSkin?
     /// See `CardSurface.accentOverride` - identical contract.
     var accentOverride: Color?
+    /// A card-sized CTA (`LibraryEntryTile`'s own per-skin button) needs Grid's real, tighter card
+    /// button proportions (~12.5px text, ~10px padding in a ~250px-wide card) rather than the
+    /// larger hero/detail-view button size every other call site still wants.
+    var compact: Bool = false
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
     private var skin: PlaydockSkin { skinOverride ?? (PlaydockSkin(rawValue: skinRaw) ?? .luxury) }
 
     func makeBody(configuration: Configuration) -> some View {
-        PlaydockButtonBody(configuration: configuration, look: playdockButtonLook(skin: skin, prominent: prominent, isPressed: configuration.isPressed, accentOverride: accentOverride), skin: skin)
+        let look = playdockButtonLook(skin: skin, prominent: prominent, isPressed: configuration.isPressed, accentOverride: accentOverride)
+        if compact {
+            PlaydockButtonBody(configuration: configuration, look: look, skin: skin, font: .caption.weight(.semibold), horizontalPadding: 12, verticalPadding: 7)
+        } else {
+            PlaydockButtonBody(configuration: configuration, look: look, skin: skin)
+        }
     }
 }
 
 /// One skin's own button recipe. Ported directly from that skin's real `.cta`/`.run` rule in
 /// skins.css instead of one generic "accent fill, white text" guess applied to every skin alike -
-/// each real button is structurally different (Luxury inverts fg/bg, Glass is a two-color
-/// gradient, Cyber is transparent with glowing outline text that only fills solid on press,
-/// Brutalist is a flat ink
+/// each real button is structurally different (Luxury inverts fg/bg, Cyber is transparent with
+/// glowing outline text that only fills solid on press, Brutalist is a flat ink
 /// block with no shadow on the button itself at all, Pixel offsets a hard shadow in its own real
 /// `--accent2`, Minimal has no visible chrome beyond colored text) - this reproduces that, not a
 /// sixth approximation of it. Shared by `PlaydockButtonStyle` (every card/hero/nav button) and
@@ -510,16 +479,19 @@ func playdockButtonLook(skin: PlaydockSkin, prominent: Bool, isPressed: Bool, ac
     case .luxury:
         // .lux .cta{background:var(--fg);color:var(--bg);...} - a real inverted "buy button", not
         // an accent-colored one; Color.primary/.windowBackgroundColor already track light and
-        // dark exactly the way --fg/--bg do.
-        return PlaydockButtonLook(fill: AnyShapeStyle(Color.primary), labelColor: Color(nsColor: .windowBackgroundColor), cornerRadius: 9)
-    case .glass:
-        // .glass .cta{background:linear-gradient(135deg,#7c5cff,#ff5c97);color:#fff;}
-        let gradient = LinearGradient(colors: [accent, Color(red: 1.0, green: 0.361, blue: 0.592)], startPoint: .topLeading, endPoint: .bottomTrailing)
-        return PlaydockButtonLook(fill: AnyShapeStyle(gradient), labelColor: .white, cornerRadius: 12)
+        // dark exactly the way --fg/--bg do. The CSS is a flat fill with no shadow of its own, but
+        // a flat solid block was exactly the "looks generic everywhere else" complaint - give it
+        // the same raised dual-shadow depth Soft's real button already has, so it reads as a
+        // tactile object rather than a plain color chip.
+        return PlaydockButtonLook(fill: AnyShapeStyle(Color.primary), labelColor: Color(nsColor: .windowBackgroundColor), cornerRadius: 9, neumorphic: true)
     case .brutalist:
         // .brut .cta{border:3px solid var(--line);background:#111;color:#fff;} - fixed ink fill
-        // regardless of light/dark (the mockup never overrides it), theme-aware border.
-        return PlaydockButtonLook(fill: AnyShapeStyle(Color(red: 0.067, green: 0.067, blue: 0.067)), labelColor: .white, borderColor: .primary, borderWidth: skin.borderWidth, cornerRadius: 0, pressOffsetX: 2, pressOffsetY: 2, scalesOnPress: false)
+        // regardless of light/dark (the mockup never overrides it), theme-aware border. The real
+        // CSS gives the button itself no shadow, but Brutalist's own *card* already pops off the
+        // page with a hard offset twin (hardShadowColor) - carrying that same real technique onto
+        // the button (not Soft's soft blur, which would contradict Brutalist's flat-ink identity)
+        // gives it the same kind of raised, tactile presence in its own idiom.
+        return PlaydockButtonLook(fill: AnyShapeStyle(Color(red: 0.067, green: 0.067, blue: 0.067)), labelColor: .white, borderColor: .primary, borderWidth: skin.borderWidth, cornerRadius: 0, hardOffsetColor: hardShadowColor(for: .brutalist), pressOffsetX: 2, pressOffsetY: 2, scalesOnPress: false)
     case .cyber:
         // .cyber .cta{border:1px solid var(--accent);background:transparent;color:var(--accent);}
         // .cyber .cta:active{background:var(--accent);color:#00131a;} - inverts solid on press.
@@ -614,8 +586,8 @@ extension View {
 
     /// Each skin's real `.art` filter/overlay from skins.css, ported directly - not just the
     /// card's own shape/shadow, but the actual *image* treatment: Cyber's scanning CRT overlay and
-    /// saturation/contrast bump, Brutalist/Pixel's own saturation/contrast bumps, Glass's bottom
-    /// gradient scrim. Every layout's own art (tiles, hero panels, detail-view art, Controller
+    /// saturation/contrast bump, Brutalist/Pixel's own saturation/contrast bumps. Every layout's
+    /// own art (tiles, hero panels, detail-view art, Controller
     /// Mode) goes through this now, matching Grid's real CSS instead of only Grid having it.
     /// Reads the active `PlaydockSkin` itself (like `cardSurface()`/`tileSurface()`), so any art
     /// view anywhere just appends this with no extra state of its own.
@@ -650,8 +622,6 @@ private struct SkinArtTreatment: ViewModifier {
             content.saturation(1.3).contrast(1.1)
         case .pixel:
             content.saturation(1.6)
-        case .glass:
-            content.overlay(LinearGradient(colors: [.clear, .clear, .black.opacity(0.28)], startPoint: .top, endPoint: .bottom))
         case .soft:
             // box-shadow: inset 4px 4px 10px rgba(0,0,0,.18), inset -3px -3px 8px
             // rgba(255,255,255,.15) - SwiftUI has no true inset shadow, so the real "sunken into
@@ -712,13 +682,12 @@ private struct SkinTint: ViewModifier {
 /// The library's *structure* - independent from `PlaydockSkin` (its look). Each case is a real,
 /// distinct navigation model, not a reskinned grid - researched against actual, proven app
 /// patterns before building: Steam's own current library (sidebar + tag-filtered grid), PS5/Xbox
-/// home screens (hero + horizontal shelves), Music.app (sidebar list + big detail pane), a plain
-/// dense table (Playnite's list mode), and Apple TV's poster carousel. A seventh, Launchpad-style
-/// bare icon grid was tried and removed - a dense grid of generic small icons with no real
-/// artwork was never going to read as a real, distinct design the way each of the remaining six
-/// genuinely does.
+/// home screens (hero + horizontal shelves), Music.app (sidebar list + big detail pane), and Apple
+/// TV's poster carousel. A dense-table List layout and a Launchpad-style bare icon grid were both
+/// tried and removed - a plain table with no artwork and a grid of generic small icons never read
+/// as real, distinct designs the way each of the remaining five genuinely does.
 enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
-    case grid, shelves, sidebar, list, steam, carousel, spotlight
+    case grid, shelves, sidebar, steam, carousel, spotlight
     var id: String { rawValue }
 
     static let storageKey = "com.exedock.libraryLayout"
@@ -728,7 +697,6 @@ enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
         case .grid: return "Grid"
         case .shelves: return "Shelves"
         case .sidebar: return "Sidebar"
-        case .list: return "List"
         case .steam: return "Steam-style"
         case .carousel: return "Carousel"
         case .spotlight: return "Spotlight"
@@ -740,7 +708,6 @@ enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
         case .grid: return "Cards in a grid - the default"
         case .shelves: return "Featured hero + horizontal rows"
         case .sidebar: return "List with a big detail pane"
-        case .list: return "Dense table, no artwork"
         case .steam: return "Sidebar categories + poster grid"
         case .carousel: return "One row, focus scales up"
         case .spotlight: return "One game up close, browsable, + a grid"
@@ -755,7 +722,6 @@ enum LibraryLayoutStyle: String, CaseIterable, Identifiable {
         case .grid: return "square.grid.2x2"
         case .shelves: return "rectangle.grid.1x2"
         case .sidebar: return "sidebar.left"
-        case .list: return "list.bullet"
         case .steam: return "square.grid.3x3.square"
         case .carousel: return "rectangle.stack"
         case .spotlight: return "star.square.on.square"

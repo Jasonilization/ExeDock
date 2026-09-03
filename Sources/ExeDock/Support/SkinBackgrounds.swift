@@ -14,20 +14,6 @@ struct SkinBackground: View {
         switch skin {
         case .luxury:
             Color(nsColor: .windowBackgroundColor)
-        case .glass:
-            ZStack {
-                if isDark {
-                    LinearGradient(colors: [Color(red: 0.047, green: 0.039, blue: 0.094), Color(red: 0.063, green: 0.047, blue: 0.133)], startPoint: .top, endPoint: .bottom)
-                    RadialGradient(colors: [.purple.opacity(0.22), .clear], center: UnitPoint(x: 0.15, y: -0.1), startRadius: 10, endRadius: 480)
-                    RadialGradient(colors: [.pink.opacity(0.2), .clear], center: UnitPoint(x: 1.0, y: 0.15), startRadius: 10, endRadius: 420)
-                    RadialGradient(colors: [.mint.opacity(0.16), .clear], center: UnitPoint(x: 0.4, y: 1.05), startRadius: 10, endRadius: 400)
-                } else {
-                    LinearGradient(colors: [Color(red: 0.96, green: 0.95, blue: 1.0), Color(red: 0.93, green: 0.95, blue: 0.98)], startPoint: .top, endPoint: .bottom)
-                    RadialGradient(colors: [.purple.opacity(0.28), .clear], center: UnitPoint(x: 0.15, y: -0.1), startRadius: 10, endRadius: 480)
-                    RadialGradient(colors: [.pink.opacity(0.26), .clear], center: UnitPoint(x: 1.0, y: 0.15), startRadius: 10, endRadius: 420)
-                    RadialGradient(colors: [.mint.opacity(0.24), .clear], center: UnitPoint(x: 0.4, y: 1.05), startRadius: 10, endRadius: 400)
-                }
-            }
         case .brutalist:
             isDark ? Color(red: 0.09, green: 0.078, blue: 0.063) : Color(red: 0.996, green: 0.965, blue: 0.894)
         case .cyber:

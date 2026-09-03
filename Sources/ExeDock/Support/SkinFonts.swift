@@ -44,7 +44,6 @@ enum SkinFonts {
     static func postscriptName(for skin: PlaydockSkin) -> String? {
         switch skin {
         case .luxury, .minimal: return nil
-        case .glass: return nil // Sora wasn't worth a second download for one weight - .rounded carries it
         case .brutalist: return "ArchivoBlack-Regular"
         case .cyber: return "Orbitron-Regular"
         case .soft: return "Quicksand-Light"

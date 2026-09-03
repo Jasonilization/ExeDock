@@ -55,12 +55,12 @@ swift test
   ever reads from it. Playdock's own state lives entirely under `~/Library/Application
   Support/ExeDock/` (yes, still named `ExeDock` internally - see the README for why that's
   deliberate).
-- **The seven skins live in `Sources/ExeDock/Resources/SkinTemplate/`** (`skins.css` + `skins.js`),
+- **The six skins live in `Sources/ExeDock/Resources/SkinTemplate/`** (`skins.css` + `skins.js`),
   rendered by a real `WKWebView` for the Grid layout (`SkinWebGridView.swift`) and, for Steam-style/
   Spotlight's own card-grid sections, a lighter fragment of the same real markup
   (`SkinWebGridFragmentView.swift`) - not hand-approximated in SwiftUI. If you're adding or tweaking
-  a skin's *look*, edit `skins.css`/`skins.js` directly; the four remaining native-SwiftUI layouts
-  (Shelves, Sidebar, List, Carousel) read the same tokens back out through
+  a skin's *look*, edit `skins.css`/`skins.js` directly; the three remaining native-SwiftUI layouts
+  (Shelves, Sidebar, Carousel) read the same tokens back out through
   `Sources/ExeDock/Support/DesignSystem.swift` (`cardSurface()`/`tileSurface()`/
   `playdockButtonLook()`), so a real skin change belongs in the CSS/JS first and gets ported into
   that file to match, not invented there independently. Changes take effect on the next

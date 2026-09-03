@@ -25,7 +25,6 @@ input.search::placeholder{color:inherit;opacity:0.6;}
 [data-stage-theme="dark"] .lux{ --bg:#151412; --panel:#211f1caa; --line:rgba(255,255,255,.08); --fg:#f1efe9; --sub:#9b968c; }
 .lux{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',system-ui,sans-serif;background:var(--bg);color:var(--fg);min-height:100vh;}
 .lux .topbar{position:sticky;top:0;z-index:20;background:var(--bg);display:flex;align-items:center;gap:14px;padding:20px 40px;border-bottom:1px solid var(--line);}
-.lux .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#c9a876,#7a5c33);}
 .lux .who{font-size:15px;font-weight:600;}
 .lux .count{font-size:12px;color:var(--sub);}
 .lux .spacer{flex:1;}
@@ -48,38 +47,6 @@ input.search::placeholder{color:inherit;opacity:0.6;}
 .lux .dot{width:6px;height:6px;border-radius:50%;background:#4caf50;}
 .lux .cta{display:block;width:100%;text-align:center;padding:9px 0;border-radius:9px;background:var(--fg);color:var(--bg);font-size:12.5px;font-weight:600;border:none;cursor:pointer;transition:transform .08s;}
 .lux .cta:active{transform:scale(.96);}
-
-/* ================= 2. Glass (glassmorphism) ================= */
-.glass{ --fg:#0d1220; --sub:#4b5468; --accent:#7c5cff; --panel:rgba(255,255,255,.55); --line:rgba(255,255,255,.6); }
-.glass{font-family:'Sora',system-ui,sans-serif;color:var(--fg);min-height:100vh;position:relative;overflow:hidden;
-  background:radial-gradient(1200px 600px at 15% -10%, #7c5cff55, transparent 60%),
-             radial-gradient(1000px 700px at 100% 10%, #ff5c9755, transparent 55%),
-             radial-gradient(900px 700px at 40% 110%, #3ce6c655, transparent 55%),
-             linear-gradient(180deg,#f4f2ff,#eef1fb);}
-.glass .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;padding:22px 44px;backdrop-filter:blur(20px);background:var(--panel);border-bottom:1px solid var(--line);}
-.glass .who{font-weight:700;font-size:15px;}
-.glass .count{font-size:12px;color:var(--sub);font-family:'Manrope';}
-.glass .spacer{flex:1;}
-.glass .search{backdrop-filter:blur(14px);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:9px 16px;font-size:13px;color:var(--sub);min-width:230px;font-family:'Manrope';}
-.glass main{padding:44px;max-width:1400px;margin:0 auto;}
-.glass h1{font-size:34px;font-weight:700;margin:0 0 30px;letter-spacing:-.01em;}
-.glass .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:24px;}
-.glass .card{backdrop-filter:blur(22px) saturate(160%);background:var(--panel);border:1px solid var(--line);border-radius:22px;overflow:hidden;box-shadow:0 8px 32px rgba(30,20,70,.14);transition:transform .2s ease;cursor:pointer;}
-.glass .card:hover{transform:translateY(-4px) scale(1.012);}
-.glass .art{height:132px;position:relative;background-size:cover;background-position:center;}
-.glass .art::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(0,0,0,.28));}
-.glass .badge{position:absolute;top:10px;left:10px;z-index:2;backdrop-filter:blur(8px);background:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.5);color:#fff;font-family:'Manrope';font-size:10px;font-weight:700;padding:3px 9px;border-radius:999px;}
-.glass .body{padding:16px 18px 18px;font-family:'Manrope';}
-.glass .title{font-family:'Sora';font-size:16px;font-weight:700;margin:0 0 2px;}
-.glass .genre{font-size:11.5px;color:var(--accent);font-weight:600;margin:0 0 8px;}
-.glass .desc{font-size:12.5px;color:var(--sub);line-height:1.5;margin:0 0 14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-.glass .run,.glass .cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px 0;border-radius:12px;border:none;font-family:'Manrope';font-size:12.5px;font-weight:700;cursor:pointer;}
-.glass .cta{background:linear-gradient(135deg,#7c5cff,#ff5c97);color:#fff;transition:transform .08s;}
-.glass .cta:active{transform:scale(.96);}
-.glass .run{background:rgba(60,230,198,.18);border:1px solid rgba(60,230,198,.4);color:#0d8c72;}
-[data-stage-theme="dark"] .glass .run{color:#7ff0d8;}
-.glass .pulse{width:7px;height:7px;border-radius:50%;background:#3ce6c6;box-shadow:0 0 0 0 #3ce6c6aa;animation:glasspulse 1.6s infinite;}
-@keyframes glasspulse{ 0%{box-shadow:0 0 0 0 #3ce6c688;} 70%{box-shadow:0 0 0 8px transparent;} 100%{box-shadow:0 0 0 0 transparent;} }
 
 /* ================= 3. Brutalist ================= */
 .brut{ --bg:#fef6e4; --fg:#111; --accent:#ff4d6d; --accent2:#3a86ff; --line:#111; }
@@ -139,7 +106,6 @@ input.search::placeholder{color:inherit;opacity:0.6;}
 [data-stage-theme="dark"] .neu{ --bg:#2b2d3a; --fg:#e8e9f3; --sub:#9497b3; --sd:#212330; --hl:#363a4c; }
 .neu{font-family:'Quicksand',sans-serif;background:var(--bg);color:var(--fg);min-height:100vh;}
 .neu .topbar{position:sticky;top:0;z-index:20;background:var(--bg);display:flex;align-items:center;gap:16px;padding:24px 40px;}
-.neu .avatar{width:38px;height:38px;border-radius:50%;background:var(--bg);box-shadow:6px 6px 12px var(--sd),-6px -6px 12px var(--hl);}
 .neu .who{font-weight:700;font-size:15px;}
 .neu .count{font-size:11.5px;color:var(--sub);}
 .neu .spacer{flex:1;}

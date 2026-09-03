@@ -1,4 +1,4 @@
-// Ten Playdocks - real per-skin card/topbar markup, ported from the original HTML mockups
+// Six Playdocks - real per-skin card/topbar markup, ported from the original HTML mockups
 // (ten-playdocks.html) and parameterized on real library data instead of the mockup's fake GAMES
 // array. skins.css is the CSS half of the same port. Swift calls window.PlaydockRender(skinKey,
 // gamesJSON, meta) after every load and whenever the underlying data changes; clicks route back to
@@ -92,17 +92,6 @@ const CARDS = {
       </div>
     </div>`).join(''),
 
-  glass: (games) => games.map(gm => `
-    <div class="card" ${click(gm.id)}>
-      <div class="art" style="${artStyle(gm, 60, 120)}">${gm.custom ? '<span class="badge">Custom</span>' : ''}</div>
-      <div class="body">
-        <p class="title">${esc(gm.title)}</p>
-        <p class="genre">${esc((gm.genre || '').toUpperCase())}</p>
-        <p class="desc">${esc(gm.desc)}</p>
-        ${gm.running ? '<div class="run"><span class="pulse"></span>Running</div>' : '<button class="cta">Launch</button>'}
-      </div>
-    </div>`).join(''),
-
   brutalist: (games) => games.map(gm => `
     <div class="card" ${click(gm.id)}>
       <div class="art" style="${artStyle(gm, 80, 60)}">${gm.custom ? '<span class="badge">Custom</span>' : ''}</div>
@@ -151,7 +140,6 @@ function design_luxury(games, meta) {
   return `
     <div class="lux">
       <div class="topbar">
-        <div class="avatar"></div>
         <div><div class="who">${esc(meta.user)}</div><div class="count">${games.length} games</div></div>
         <div class="spacer"></div>
         <input id="search-input" class="search" type="text" placeholder="Search your games" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)">
@@ -161,19 +149,6 @@ function design_luxury(games, meta) {
         <p class="kicker">Installed and ready to play</p>
         <div class="grid">${CARDS.luxury(games)}</div>
       </main>
-    </div>`;
-}
-
-/* ================= 2. Glass ================= */
-function design_glass(games, meta) {
-  return `
-    <div class="glass">
-      <div class="topbar">
-        <div><div class="who">${esc(meta.user)}’s Library</div><div class="count">${games.length} games installed</div></div>
-        <div class="spacer"></div>
-        <input id="search-input" class="search" type="text" placeholder="Search…" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)">
-      </div>
-      <main><h1>Continue Playing</h1><div class="grid">${CARDS.glass(games)}</div></main>
     </div>`;
 }
 
@@ -206,7 +181,7 @@ function design_cyber(games, meta) {
 function design_neu(games, meta) {
   return `
     <div class="neu">
-      <div class="topbar"><div class="avatar"></div><div><div class="who">${esc(meta.user)}</div><div class="count">${games.length} games</div></div><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="Search your games" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
+      <div class="topbar"><div><div class="who">${esc(meta.user)}</div><div class="count">${games.length} games</div></div><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="Search your games" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
       <main><h1>Your Library</h1><div class="grid">${CARDS.soft(games)}</div></main>
     </div>`;
 }
@@ -246,7 +221,6 @@ function design_list(games, meta) {
 
 const DESIGNS = {
   luxury: design_luxury,
-  glass: design_glass,
   brutalist: design_brutal,
   cyber: design_cyber,
   soft: design_neu,
@@ -258,7 +232,7 @@ const DESIGNS = {
 // key (skins.css was authored with these shorter names before the skins themselves were renamed
 // to plainer ones).
 const SKIN_CLASS = {
-  luxury: 'lux', glass: 'glass', brutalist: 'brut', cyber: 'cyber', soft: 'neu', pixel: 'pix',
+  luxury: 'lux', brutalist: 'brut', cyber: 'cyber', soft: 'neu', pixel: 'pix',
 };
 
 // Called from Swift via evaluateJavaScript after every load and whenever the underlying data or

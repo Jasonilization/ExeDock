@@ -71,7 +71,7 @@ private func artView(path: String?, id: String) -> some View {
     }
 }
 
-/// A small, square real-art icon for a row-based layout (Sidebar's list, List's rows) - resolves
+/// A small, square real-art icon for a row-based layout (Sidebar's own list rows) - resolves
 /// its own art independently of whatever else on screen is showing that entry, so a row shows the
 /// actual game icon the instant its own fetch completes rather than staying a flat placeholder
 /// color forever. Square real art, falling back to the same placeholder gradient only for the
@@ -110,6 +110,8 @@ private struct LibraryEntryTile: View {
     @LocalState private var presentation: LibraryPresentation?
     @LocalState private var isHovering = false
     @LocalState private var gameAccent: Color?
+    @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
+    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
 
     private var isRunning: Bool { runningTracker.runningGames[entry.id] != nil }
 
@@ -130,6 +132,15 @@ private struct LibraryEntryTile: View {
                 }
             }
             SkinTitleText(text: entry.name, size: 15).frame(width: width, alignment: .leading)
+            // Grid's own real cards always show a visible per-skin action button, not just bare
+            // tap-to-open art - every other layout's tile stayed silent on this until now. Tapping
+            // it does exactly what tapping the tile already does (open the detail view - Grid's own
+            // real button is no different, its click handler bubbles up to the same card-open
+            // action), so this is a real visual affordance matching Grid, not a second control.
+            if !isRunning {
+                Button(skin.ctaLabel) { onOpen() }
+                    .buttonStyle(PlaydockButtonStyle(accentOverride: gameAccent, compact: true))
+            }
         }
         .contentShape(Rectangle())
         .onTapGesture { onOpen() }
@@ -148,6 +159,8 @@ struct LibraryShelvesLayout: View {
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     @LocalState private var featuredPresentation: LibraryPresentation?
     @LocalState private var featuredAccent: Color?
+    @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
+    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
     /// Set the instant someone uses the prev/next arrows - once they have, that choice sticks
     /// (browsing away and back doesn't silently snap back to whatever's running/first). The hero
     /// used to be permanently `entries.first` with no way to change it at all.
@@ -179,7 +192,7 @@ struct LibraryShelvesLayout: View {
                             if let desc = featuredPresentation?.description {
                                 Text(desc).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(2).frame(maxWidth: 460, alignment: .leading)
                             }
-                            Button("View Details") { onOpenDetail(featured) }
+                            Button(skin.ctaLabel) { onOpenDetail(featured) }
                                 .buttonStyle(PlaydockButtonStyle(accentOverride: featuredAccent))
                         }
                         .padding(32)
@@ -241,6 +254,8 @@ struct LibrarySidebarLayout: View {
     @LocalState private var selectedID: String?
     @LocalState private var presentation: LibraryPresentation?
     @LocalState private var selectedAccent: Color?
+    @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
+    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
 
     private var selected: LibraryEntry? {
         entries.first { $0.id == selectedID } ?? entries.first
@@ -321,7 +336,7 @@ struct LibrarySidebarLayout: View {
                             if let desc = presentation?.description {
                                 Text(desc).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(3).frame(maxWidth: 440, alignment: .leading)
                             }
-                            Button("View Details") { onOpenDetail(selected) }
+                            Button(skin.ctaLabel) { onOpenDetail(selected) }
                                 .buttonStyle(PlaydockButtonStyle(accentOverride: selectedAccent))
                         }
                         .padding(32)
@@ -340,66 +355,7 @@ struct LibrarySidebarLayout: View {
     }
 }
 
-// MARK: - Layout C: List (dense table, no artwork focus)
-
-struct LibraryListLayout: View {
-    let entries: [LibraryEntry]
-    let onOpenDetail: (LibraryEntry) -> Void
-    @ObservedObject private var runningTracker = RunningGameTracker.shared
-    @LocalState private var focusedIndex: Int?
-    @ObservedObject private var controllerObserver = ControllerObserver.shared
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                Text("").frame(width: 30)
-                Text("TITLE").frame(maxWidth: .infinity, alignment: .leading)
-                Text("STATUS").frame(width: 110, alignment: .trailing)
-            }
-            .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-            .padding(.horizontal, 24).padding(.vertical, 8)
-            Divider()
-            ScrollViewReader { scrollProxy in
-                ScrollView {
-                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                        HStack(spacing: 12) {
-                            SmallArtIcon(entry: entry, size: 30, cornerRadius: 6)
-                            HStack(spacing: 6) {
-                                SkinTitleText(text: entry.name, size: 15)
-                                if case .custom = entry { Text("CUSTOM").font(.caption2.bold()).foregroundStyle(.purple) }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            Group {
-                                if runningTracker.runningGames[entry.id] != nil {
-                                    Label("Running", systemImage: "circle.fill").font(.caption.weight(.semibold)).foregroundStyle(.green)
-                                } else {
-                                    Text("Details →").font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
-                                }
-                            }
-                            .frame(width: 110, alignment: .trailing)
-                        }
-                        .padding(.horizontal, 24).padding(.vertical, 9)
-                        .background(controllerObserver.isConnected && focusedIndex == index ? Color.accentColor.opacity(0.15) : .clear)
-                        .contentShape(Rectangle())
-                        .onTapGesture { onOpenDetail(entry) }
-                        .id(entry.id)
-                        Divider()
-                    }
-                }
-                .controllerLinearFocus(focusedIndex: $focusedIndex, count: entries.count) { index in
-                    guard entries.indices.contains(index) else { return }
-                    onOpenDetail(entries[index])
-                }
-                .onChange(of: focusedIndex) { index in
-                    guard let index, entries.indices.contains(index) else { return }
-                    withAnimation { scrollProxy.scrollTo(entries[index].id, anchor: .center) }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Layout D: Steam-style (sidebar categories + poster grid)
+// MARK: - Layout C: Steam-style (sidebar categories + poster grid)
 
 struct LibrarySteamStyleLayout: View {
     let entries: [LibraryEntry]
@@ -457,7 +413,7 @@ struct LibrarySteamStyleLayout: View {
     }
 }
 
-// MARK: - Layout E: Poster Carousel (Apple TV-style, focus scales up)
+// MARK: - Layout D: Poster Carousel (Apple TV-style, focus scales up)
 
 struct LibraryCarouselLayout: View {
     let entries: [LibraryEntry]
@@ -547,16 +503,16 @@ struct LibraryCarouselLayout: View {
     }
 }
 
-// MARK: - Layout F: Spotlight (magazine-style feature + grid, real per-skin craft)
+// MARK: - Layout E: Spotlight (magazine-style feature + grid, real per-skin craft)
 
 /// The structure behind the web-rendered Editorial *skin* that impressed live - "damn i love the
 /// editorial appearence. make it into a layout one and make sure every other appearence is able to
 /// be the same quality in the skin for the editorial layout" - split out as a real, independent
-/// *layout* (this file's usual axis: structure, not look) so any of the ten skins can use it, not
+/// *layout* (this file's usual axis: structure, not look) so any of the six skins can use it, not
 /// just Editorial's own CSS. Uses the same `cardSurface()`/`tileSurface()`/`SkinTitleText`/
 /// `SkinBackground` machinery every other layout here already does, so it inherits the exact same
 /// real per-skin card craft (Cyber's cut corners, Brutalist/Pixel's hard shadow, Soft's neumorphic
-/// highlight, Glass/Vapor's translucency) rather than being tied to one skin's own look.
+/// highlight) rather than being tied to one skin's own look.
 struct LibrarySpotlightLayout: View {
     let entries: [LibraryEntry]
     /// See `LibrarySteamStyleLayout.webGridEntries` - identical reasoning, used for the "Also In
@@ -617,7 +573,7 @@ struct LibrarySpotlightLayout: View {
                                 Text(desc).font(.body).foregroundStyle(.secondary).lineLimit(4).frame(maxWidth: 480, alignment: .leading)
                             }
                             HStack(spacing: 14) {
-                                Button("View Details") { onOpenDetail(featured) }.buttonStyle(PlaydockButtonStyle(accentOverride: featuredAccent))
+                                Button(skin.ctaLabel) { onOpenDetail(featured) }.buttonStyle(PlaydockButtonStyle(accentOverride: featuredAccent))
                                 if entries.count > 1 {
                                     HStack(spacing: 8) {
                                         spotlightNavButton("chevron.left") { cycleFeatured(by: -1) }
