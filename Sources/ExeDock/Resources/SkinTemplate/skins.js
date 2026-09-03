@@ -73,6 +73,19 @@ function handleSearchInput(value) {
 // consistent bridge point no matter which skin's markup wraps it.
 const click = (id) => `onclick="postClick('${id}')"`;
 
+// A card's top-left corner badge - "Custom" for a manually-imported game, "Mac" for one found in
+// the real, separate macOS Steam client's own library (never both at once, so this is a plain
+// either/or). `customLabel` lets a skin keep its own existing capitalization convention (Pixel's
+// real CSS badge reads "MOD", not "Custom") without a second, separate badge helper per skin.
+const badge = (gm, customLabel) => {
+  if (gm.custom) return `<span class="badge">${customLabel}</span>`;
+  if (gm.mac) {
+    const isAllCaps = customLabel === customLabel.toUpperCase();
+    return `<span class="badge badge-mac">${isAllCaps ? 'MAC' : 'Mac'}</span>`;
+  }
+  return '';
+};
+
 // Each skin's own real .card markup, factored out from its full design_* page so a *grid-shaped
 // region embedded inside a native SwiftUI layout* (Steam-style's poster grid, Spotlight's own
 // grid section) can render the exact same cards Grid itself does - not a second approximation of
@@ -82,7 +95,7 @@ const CARDS = {
   luxury: (games) => games.map(gm => `
     <div class="card" ${click(gm.id)}>
       <div class="art" style="${artStyle(gm, 45, 135)}">
-        ${gm.custom ? '<span class="badge">Custom</span>' : ''}
+        ${badge(gm, 'Custom')}
       </div>
       <div class="body">
         <p class="title">${esc(gm.title)}</p>
@@ -94,7 +107,7 @@ const CARDS = {
 
   brutalist: (games) => games.map(gm => `
     <div class="card" ${click(gm.id)}>
-      <div class="art" style="${artStyle(gm, 80, 60)}">${gm.custom ? '<span class="badge">Custom</span>' : ''}</div>
+      <div class="art" style="${artStyle(gm, 80, 60)}">${badge(gm, 'Custom')}</div>
       <div class="body">
         <p class="title">${esc(gm.title)}</p>
         <span class="genre">${esc(gm.genre)}</span>
@@ -105,7 +118,7 @@ const CARDS = {
 
   cyber: (games) => games.map(gm => `
     <div class="card" ${click(gm.id)}>
-      <div class="art" style="${artStyle(gm, 70, 140)}">${gm.custom ? '<span class="badge">CUSTOM</span>' : ''}</div>
+      <div class="art" style="${artStyle(gm, 70, 140)}">${badge(gm, 'CUSTOM')}</div>
       <div class="body">
         <p class="title">${esc(gm.title)}</p>
         <p class="genre">${esc(gm.genre)}</p>
@@ -116,7 +129,7 @@ const CARDS = {
 
   soft: (games) => games.map(gm => `
     <div class="card" ${click(gm.id)}>
-      <div class="art" style="${artStyle(gm, 25, 100)}">${gm.custom ? '<span class="badge">Custom</span>' : ''}</div>
+      <div class="art" style="${artStyle(gm, 25, 100)}">${badge(gm, 'Custom')}</div>
       <p class="title">${esc(gm.title)}</p>
       <p class="genre">${esc(gm.genre)}</p>
       <p class="desc">${esc(gm.desc)}</p>
@@ -125,7 +138,7 @@ const CARDS = {
 
   pixel: (games) => games.map(gm => `
     <div class="card" ${click(gm.id)}>
-      <div class="art" style="${artStyle(gm, 90, 100)}">${gm.custom ? '<span class="badge">MOD</span>' : ''}</div>
+      <div class="art" style="${artStyle(gm, 90, 100)}">${badge(gm, 'MOD')}</div>
       <div class="body">
         <p class="title">${esc(gm.title)}</p>
         <p class="genre">${esc(gm.genre)}</p>
@@ -201,7 +214,7 @@ function design_list(games, meta) {
   const rows = games.map(gm => `
     <div class="row" ${click(gm.id)}>
       <div class="art" style="${artStyle(gm, 25, 90)}"></div>
-      <div class="title">${esc(gm.title)}${gm.custom ? '<span class="badge">CUSTOM</span>' : ''}</div>
+      <div class="title">${esc(gm.title)}${badge(gm, 'CUSTOM')}</div>
       <div class="genre">${esc(gm.genre)}</div>
       <div class="num">${esc(gm.size || '')}</div>
       <div class="num">${esc(gm.hours || '')}</div>

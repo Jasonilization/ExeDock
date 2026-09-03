@@ -14,6 +14,9 @@ struct SkinWebGridEntry: Encodable, Equatable {
     /// layout in this app already does.
     let art: String?
     let custom: Bool
+    /// A game found in the real, separate macOS Steam client's own library (`SteamGameSource
+    /// .nativeMac`) - shown with a real "Mac" badge, the same way a custom game gets "Custom".
+    let mac: Bool
     let running: Bool
     let size: String?
     let hours: String?

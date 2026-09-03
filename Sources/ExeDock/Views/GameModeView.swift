@@ -108,13 +108,16 @@ struct GameModeView: View {
         libraryEntries.map { entry in
             let presentation = libraryPresentations[entry.id]
             let isCustom: Bool
+            let isMac: Bool
             let sizeText: String?
             switch entry {
             case .steam(let game):
                 isCustom = false
+                isMac = game.source == .nativeMac
                 sizeText = game.sizeOnDisk.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
             case .custom:
                 isCustom = true
+                isMac = false
                 sizeText = nil
             }
             return SkinWebGridEntry(
@@ -124,6 +127,7 @@ struct GameModeView: View {
                 desc: presentation?.description ?? "",
                 art: SkinWebArt.dataURI(forImagePath: presentation?.artPath),
                 custom: isCustom,
+                mac: isMac,
                 running: runningTracker.runningGames[entry.id] != nil,
                 size: sizeText,
                 hours: nil

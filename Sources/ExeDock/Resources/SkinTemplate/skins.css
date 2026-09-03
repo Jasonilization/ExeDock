@@ -27,6 +27,12 @@ input.search::placeholder{color:inherit;opacity:0.6;}
    card with no separate id-matching. */
 .controller-focus{outline:3px solid #4c8bf5 !important;outline-offset:2px;box-shadow:0 0 0 6px rgba(76,139,245,.25) !important;}
 
+/* A game found in the real, separate macOS Steam client's own library gets this instead of
+   ".badge"'s "Custom" - same real per-skin shape/position (this always renders alongside the base
+   .badge class, never alone), just Apple's own system blue instead of each skin's own accent, so
+   it reads as "this is what kind of game," not "this skin's own accent happens to be blue." */
+.badge-mac{background:#0071e3 !important;color:#fff !important;}
+
 /* ================= 1. Luxury (native macOS) ================= */
 .lux{ --bg:#f6f5f3; --panel:#ffffffcc; --line:rgba(0,0,0,.08); --fg:#1c1b19; --sub:#6b6863; --accent:#b08d57; }
 [data-stage-theme="dark"] .lux{ --bg:#151412; --panel:#211f1caa; --line:rgba(255,255,255,.08); --fg:#f1efe9; --sub:#9b968c; }
