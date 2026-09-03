@@ -6,10 +6,8 @@ struct ContentView: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var controllerObserver = ControllerObserver.shared
     @LocalState private var isTargeted = false
-    /// A global "make everything bigger or smaller" size control, per live feedback ("add a UI
-    /// slider... so stuff can be big or small. like everyhting" - then, after a plain `.scaleEffect`
-    /// wasn't the right feel: "i meant ui get bigger not just zoom the screen. everything still
-    /// needs to be usable"). A bare `.scaleEffect` on its own is a pure *visual* zoom - it can push
+    /// A global "make everything bigger or smaller" size control. A real UI scale rather than a
+    /// plain visual zoom - a bare `.scaleEffect` on its own is a pure *visual* zoom - it can push
     /// content past the window's real edges (clipped, unusable) with nothing to compensate. The fix
     /// - a well-known SwiftUI technique, not something invented here - is to first propose the
     /// content a *smaller logical size* (the window's real size divided by the scale) and then
@@ -49,9 +47,9 @@ struct ContentView: View {
             guard let direction = controllerObserver.sectionStepRequest?.direction else { return }
             stepSection(by: direction)
         }
-        // "Make sure things always rechecks," per live feedback - switching back to the Steam
-        // dashboard (from either the button or a controller's LT/RT) re-scans it fresh, so a game
-        // installed or removed while looking at Library/C: Drive shows up without a full relaunch.
+        // Switching back to the Steam dashboard (from either the button or a controller's LT/RT)
+        // re-scans it fresh, so a game installed or removed while looking at Library/C: Drive
+        // shows up without a full relaunch.
         .onChange(of: model.selectedSection) { newValue in
             guard newValue == .gameMode else { return }
             model.refreshSteamGames()

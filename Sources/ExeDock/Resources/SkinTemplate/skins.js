@@ -32,7 +32,7 @@ function postClick(id) {
 
 // Real, live-filtering search state - each skin's own topbar field was static decorative text
 // until now (confirmed live: no oninput handler existed anywhere), matching neither the mockups'
-// own intent nor "make sure the search bar is usable," per live feedback. QUERY/ALL_GAMES/META are
+// own intent nor a usable search field. QUERY/ALL_GAMES/META are
 // module state so a render can be triggered from a plain oninput handler without threading
 // arguments through every one of the ten design_* functions.
 let ALL_GAMES = [];
@@ -208,27 +208,6 @@ function design_pixel(games, meta) {
     </div>`;
 }
 
-/* ================= 7. Console ================= */
-function design_console(games, meta) {
-  const screws = '<span class="screw" style="top:6px;left:6px"></span><span class="screw" style="top:6px;right:6px"></span><span class="screw" style="bottom:6px;left:6px"></span><span class="screw" style="bottom:6px;right:6px"></span>';
-  const cards = games.map(gm => `
-    <div class="card" ${click(gm.id)} style="position:relative">
-      ${screws}
-      <div class="art" style="${artStyle(gm, 35, 90)}">${gm.custom ? '<span class="badge">Custom</span>' : ''}</div>
-      <div class="body">
-        <p class="title">${esc(gm.title)}</p>
-        <p class="genre">${esc(gm.genre)}</p>
-        <p class="desc">${esc(gm.desc)}</p>
-        ${gm.running ? '<button class="cta run"><span class="led"></span>Running</button>' : '<button class="cta">▶ Launch</button>'}
-      </div>
-    </div>`).join('');
-  return `
-    <div class="con">
-      <div class="topbar"><span class="led"></span><span class="who">PLAYDOCK UNIT</span><span class="count">USER 01 · ${games.length} TITLES LOADED</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="SEARCH LIBRARY" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
-      <main><h1>■ Game Select</h1><div class="grid">${cards}</div></main>
-    </div>`;
-}
-
 /* ================= 8. Minimal list ================= */
 function design_list(games, meta) {
   const rows = games.map(gm => `
@@ -259,7 +238,6 @@ const DESIGNS = {
   cyber: design_cyber,
   soft: design_neu,
   pixel: design_pixel,
-  console: design_console,
   minimal: design_list,
 };
 

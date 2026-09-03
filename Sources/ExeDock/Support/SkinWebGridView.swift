@@ -20,8 +20,7 @@ struct SkinWebGridEntry: Encodable, Equatable {
 }
 
 /// The real per-skin HTML/CSS from `ten-playdocks.html`, rendered by an actual `WKWebView` instead
-/// of re-approximated in SwiftUI - "I dont care how much new UI or non-swift UI you need but I mean
-/// identical not just in colour," per live feedback, after several rounds of hand-porting individual
+/// of re-approximated in SwiftUI - several rounds of hand-porting individual
 /// tokens (background, radius, border, shadow, font) still didn't read as the same design the
 /// mockups showed. This renders the literal mockup markup/CSS, populated with this library's real
 /// games, real fetched artwork, and real running/custom state - genuinely pixel-identical instead of

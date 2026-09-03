@@ -12,9 +12,8 @@ struct DiscoveredMetadata: Codable, Equatable {
     var steamArtworkPath: String?
     var steamDescription: String?
     // Everything below only ever gets filled in alongside a confident Steam match - the same
-    // richer fields a real Steam game's own card/detail view already shows ("custom game needs
-    // everything a steam game has too," per live feedback), pulled from the exact same
-    // appdetails call that already provides the two fields above, so this costs nothing extra.
+    // richer fields a real Steam game's own card/detail view already shows, pulled from the exact
+    // same appdetails call that already provides the two fields above, so this costs nothing extra.
     var steamAboutTheGame: String?
     var steamBackgroundPath: String?
     var steamScreenshotPaths: [String] = []

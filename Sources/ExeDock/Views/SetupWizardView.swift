@@ -1,11 +1,10 @@
 import SwiftUI
 
-/// A short, entirely optional first-launch walkthrough for picking a look and a layout - "have a
-/// setup wizard to help set up the UI and guide through the app first launch, and on request in
-/// settings later on," per live feedback. Nothing here is required: every default already works
-/// with zero interaction, so this only ever helps someone find a look they like faster - it never
-/// gates anything. Shown automatically once `SetupCoordinator` reaches `.ready` for a brand-new
-/// install (see `RootView`), and reachable again anytime from Settings ("Run Setup Wizard Again").
+/// A short, entirely optional first-launch walkthrough for picking a look and a layout. Nothing
+/// here is required: every default already works with zero interaction, so this only ever helps
+/// someone find a look they like faster - it never gates anything. Shown automatically once
+/// `SetupCoordinator` reaches `.ready` for a brand-new install (see `RootView`), and reachable
+/// again anytime from Settings ("Run Setup Wizard Again").
 ///
 /// Every preview here is built from the real, shared primitives the dashboard itself uses
 /// (`SkinBackground`, `PlaydockCardShape`, `cardSurface()`/`tileSurface()`, `SkinTitleText`,

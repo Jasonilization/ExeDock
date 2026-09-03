@@ -2,9 +2,9 @@ import CoreText
 import Foundation
 
 /// Registers the real, bundled display typefaces each `PlaydockSkin` uses for its most prominent
-/// text (game/section titles) - "the 10 UI skins should look exactly like the preview websites,"
-/// per live feedback, which used real Google Fonts (OFL-licensed, freely embeddable - not a
-/// custom typeface someone would need a license for) for each skin's headline face. `Font.Design`
+/// text (game/section titles), matching the real Google Fonts (OFL-licensed, freely embeddable -
+/// not a custom typeface someone would need a license for) each skin's own preview used for its
+/// headline face. `Font.Design`
 /// alone (`.rounded`/`.serif`/`.monospaced`) gets a skin *most* of the way there for body text with
 /// zero bundling risk, but a real display face is what actually makes a headline read as "this is
 /// Neobrutalist" rather than "this is the same system font, bolder."
@@ -14,7 +14,6 @@ enum SkinFonts {
     /// (`CTFontCopyName(_, kCTFontPostScriptNameKey)`), not guessed from the file name.
     private static let files: [(file: String, postscriptName: String)] = [
         ("archivo-black", "ArchivoBlack-Regular"),
-        ("barlowcondensed", "BarlowCondensed-Bold"),
         ("jetbrainsmono", "JetBrainsMono-Regular"),
         ("orbitron", "Orbitron-Regular"),
         ("pressstart2p", "PressStart2P-Regular"),
@@ -50,7 +49,6 @@ enum SkinFonts {
         case .cyber: return "Orbitron-Regular"
         case .soft: return "Quicksand-Light"
         case .pixel: return "PressStart2P-Regular"
-        case .console: return "BarlowCondensed-Bold"
         }
     }
 }

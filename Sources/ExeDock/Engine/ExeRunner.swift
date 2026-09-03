@@ -9,8 +9,8 @@ enum ExeRunner {
     /// case always tries that wrapper's own launcher first, below), runs the exe with a real Sikarugir
     /// wrapper app's own bundled wine binary (see `SikarugirEngine.anyWrapperEngine`) instead of
     /// ExeDock's own separately-downloaded engine - still against `bottle`'s own prefix, just with a
-    /// different engine reading it. Custom games use this - "just not use playdock's engine but
-    /// sikarugir's, it is guaranteed to work on that one," per live feedback. Falls back to
+    /// different engine reading it. Custom games use this, since a real Sikarugir engine build is
+    /// guaranteed to work against a Sikarugir-created bottle. Falls back to
     /// ExeDock's own engine if no Sikarugir wrapper app is actually installed to borrow one from.
     @discardableResult
     static func run(exePath: String, in bottle: Bottle, arguments: [String] = [], config: GameModeConfig = GameModeConfig(), engineName: String? = nil, preferWrapperEngine: Bool = false) async throws -> Process? {

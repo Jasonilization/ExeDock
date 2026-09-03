@@ -78,8 +78,8 @@ final class AppModel: ObservableObject {
         observeAppActivation()
     }
 
-    /// Re-scans everything worth re-scanning whenever Playdock comes back to the foreground - "make
-    /// sure things always rechecks," per live feedback. A one-shot scan at launch alone means
+    /// Re-scans everything worth re-scanning whenever Playdock comes back to the foreground. A
+    /// one-shot scan at launch alone means
     /// installing a Steam game (real or Mac-native), removing a wrapper app, or anything else that
     /// changes on disk while Playdock sits in the background never shows up without a full relaunch.
     /// Registered once; safe to call repeatedly since every refresh method it calls already is.
@@ -102,7 +102,6 @@ final class AppModel: ObservableObject {
     /// reflects whether ExeDock has actually set that bottle up yet) with whatever's installed
     /// through the real, separate macOS Steam client - which isn't gated on that at all, since it's
     /// a completely different Steam install ExeDock doesn't manage or need to unlock anything for.
-    /// "Make sure I can see my mac steam games... too," per live feedback.
     func refreshSteamGames() {
         let scanWineBottle = isGameModeUnlocked
         isLoadingSteamGames = true
@@ -393,8 +392,7 @@ final class AppModel: ObservableObject {
     /// common case, since most manually-imported games just sit somewhere plain on disk. (Wine
     /// itself has no requirement that an exe physically live inside the prefix it runs under -
     /// `ExeRunner` already passes an arbitrary host path straight through.) Internal, not private,
-    /// so the launch overlay can show which bottle a custom game is actually about to run from -
-    /// "also where it's at," per live feedback.
+    /// so the launch overlay can show which bottle a custom game is actually about to run from.
     func resolvedBottle(forExePath exePath: String) -> Bottle {
         CDriveScanner.allKnownBottles().first { exePath.hasPrefix($0.driveCPath) } ?? BottleManager.shared.defaultBottle
     }

@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// A big, controller-navigable carousel: one game centered at a time, D-pad left/right to switch, A
-/// to drill into that game's full Game Detail view (not launch straight away - "controller mode
-/// should just be able to select everything," per live feedback), B to back out one level at a
+/// to drill into that game's full Game Detail view (not launch straight away - selecting should
+/// always be a confirm step, not a surprise launch), B to back out one level at a
 /// time (out of the detail view first, then out of Controller Mode itself). Reacts to
 /// `ControllerObserver`'s shared D-pad/A/B stream rather than owning raw `GCExtendedGamepad`
 /// handlers itself, self-filtering on `showingDetail` so it steps back and lets `GameDetailView`
@@ -29,6 +29,7 @@ struct ControllerModeView: View {
                     Spacer()
                     artwork
                         .frame(width: 280, height: 280)
+                        .skinArtTreatment()
                         .tileSurface()
                     SkinTitleText(text: currentGame.name, size: 36, lineLimit: 2)
                         .foregroundStyle(.white)

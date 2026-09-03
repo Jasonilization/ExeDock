@@ -2,10 +2,9 @@ import SwiftUI
 
 /// The real background treatment behind the whole dashboard, one real SwiftUI view per skin -
 /// ported directly from that skin's own HTML preview's `body` background (the same gradients,
-/// grids, and textures, not an approximation of them). "I mean the background, design, boxes,
-/// everything... check your own html... make exactly that," per live feedback - color/corner-radius
-/// tokens alone were never going to get a skin looking like its own preview; the background is
-/// most of what actually reads as a different visual world.
+/// grids, and textures, not an approximation of them). Color/corner-radius tokens alone were
+/// never going to get a skin looking like its own preview; the background is most of what
+/// actually reads as a different visual world.
 struct SkinBackground: View {
     let skin: PlaydockSkin
     @Environment(\.colorScheme) private var colorScheme
@@ -42,16 +41,6 @@ struct SkinBackground: View {
             ZStack {
                 isDark ? Color(red: 0.102, green: 0.11, blue: 0.173) : Color(red: 0.918, green: 0.945, blue: 0.984)
                 DotPattern(spacing: 24, dotSize: 3, color: isDark ? Color(red: 0.161, green: 0.212, blue: 0.435) : Color(red: 0.78, green: 0.839, blue: 0.937))
-            }
-        case .console:
-            ZStack {
-                if isDark {
-                    LinearGradient(colors: [Color(white: 0.11), Color(white: 0.10)], startPoint: .top, endPoint: .bottom)
-                    DiagonalStripes(spacing: 4, angle: .degrees(115), color: .white.opacity(0.02))
-                } else {
-                    LinearGradient(colors: [Color(white: 0.91), Color(white: 0.885)], startPoint: .top, endPoint: .bottom)
-                    DiagonalStripes(spacing: 4, angle: .degrees(115), color: .black.opacity(0.025))
-                }
             }
         case .minimal:
             Color(nsColor: .textBackgroundColor)
@@ -108,25 +97,3 @@ private struct DotPattern: View {
     }
 }
 
-/// A subtle diagonal hairline texture, matching the Console preview's brushed-panel
-/// repeating-linear-gradient.
-private struct DiagonalStripes: View {
-    let spacing: CGFloat
-    let angle: Angle
-    let color: Color
-    var body: some View {
-        Canvas { context, size in
-            let diagonal = sqrt(size.width * size.width + size.height * size.height)
-            var offset: CGFloat = -diagonal
-            while offset < diagonal {
-                var path = Path()
-                path.move(to: CGPoint(x: offset, y: 0))
-                path.addLine(to: CGPoint(x: offset + diagonal * CGFloat(tan(angle.radians)), y: diagonal))
-                context.stroke(path, with: .color(color), lineWidth: 1)
-                offset += spacing
-            }
-        }
-        .allowsHitTesting(false)
-        .clipped()
-    }
-}

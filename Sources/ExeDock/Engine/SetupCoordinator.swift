@@ -46,8 +46,8 @@ final class SetupCoordinator: ObservableObject {
     /// genuinely independent downloads from separate GitHub releases with no data dependency on
     /// each other; only bottle init at the very end actually needs both finished. Running them
     /// concurrently instead of strictly one-after-the-other measurably shortens a brand-new user's
-    /// very first launch - "make sure installation... does it FAST," per live feedback. Kept as a
-    /// stored `Task` (not just called inline) specifically so it can be *started* here and *awaited*
+    /// very first launch. Kept as a stored `Task` (not just called inline) specifically so it can
+    /// be *started* here and *awaited*
     /// later in `ensureDefaultBottleReady()`, rather than those two things happening at the same
     /// call site the way a plain `await` would force.
     private var frameworksTask: Task<Void, Error>?

@@ -2,9 +2,8 @@ import Foundation
 
 /// Gives one of Playdock's own bottles (`.owned` - the shared bottle every custom game and Steam
 /// land in) the same reliable, Configure-driven launch path a Sikarugir Creator wrapper already has
-/// - entirely automatically, with no manual setup step for anyone. "make sure new users can do all
-/// this without having to set anything up... everything you do will have to be automatically set up
-/// by playdock," per live feedback - this only ever runs as a side effect of a normal launch.
+/// - entirely automatically, with no manual setup step for anyone: this only ever runs as a side
+/// effect of a normal launch.
 ///
 /// Real, verified evidence for why this works (not guessed): a genuine Sikarugir wrapper's own
 /// Configure app resolves which bottle to drive purely from *where it itself sits on disk* - its own

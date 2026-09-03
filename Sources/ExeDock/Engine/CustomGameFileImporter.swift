@@ -3,9 +3,8 @@ import Foundation
 /// Moves a freshly-picked (or already-imported) custom game's files into Playdock's own managed
 /// bottle, so it launches through exactly the same engine as every other custom game - no
 /// dependency on some pre-existing, third-party Sikarugir wrapper bottle, no separate config path
-/// to juggle. "Make it so my custom games are in the same bottle... if I have a game folder just in
-/// a random place I should be able to just select it and playdock will move it to the bottle and
-/// get it ready," per live feedback. Every game gets its own subfolder
+/// to juggle: pick a game folder from anywhere on disk and Playdock moves it into the bottle and
+/// gets it ready to launch. Every game gets its own subfolder
 /// (`drive_c/CustomGames/<name>`), so different games' files never collide even though they all
 /// share one bottle - `ExeRunner` already sets each launch's working directory to the exe's own
 /// folder, so "which game's config/save path is active" already tracks whichever one is actually

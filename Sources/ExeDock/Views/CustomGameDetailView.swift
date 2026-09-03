@@ -5,8 +5,8 @@ private enum CustomDetailAction: Equatable {
     case launch, settings, reveal, edit
 }
 
-/// The custom-game equivalent of `GameDetailView` - "custom game needs everything a steam game has
-/// too," per live feedback. Same visual language (backdrop, header art, rating/genre tags,
+/// The custom-game equivalent of `GameDetailView`, giving a custom game the same full detail
+/// treatment a Steam game gets. Same visual language (backdrop, header art, rating/genre tags,
 /// description, screenshot strip, a controller-navigable action row) but its own type rather than a
 /// generalized shared view, since the two diverge in real ways (no Steam store page to link to,
 /// an Edit action instead, a location-unavailable state). Reached by tapping a custom game's card,
@@ -30,6 +30,7 @@ struct CustomGameDetailView: View {
     private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.id] }
     private var hasCustomSettings: Bool { model.perGameConfigs[game.id] != nil }
     private var isMissing: Bool { !FileManager.default.fileExists(atPath: game.exePath) }
+    private var gameAccent: Color? { game.effectiveArtworkPath.flatMap { GameArtColor.dominantColor(forImagePath: $0) } }
 
     private var availableActions: [CustomDetailAction] {
         var actions: [CustomDetailAction] = []
@@ -58,7 +59,7 @@ struct CustomGameDetailView: View {
                                 .foregroundStyle(.orange)
                         }
                         // Photos sit in their own column to the right of the text, not stacked
-                        // below it - "pictures should be at the RIGHT," per live feedback.
+                        // below it.
                         HStack(alignment: .top, spacing: 24) {
                             VStack(alignment: .leading, spacing: 22) {
                                 actionRow
@@ -224,9 +225,7 @@ struct CustomGameDetailView: View {
     /// A fixed-width column of photos to the right of the text - matches `GameDetailView`'s own
     /// treatment exactly (see that view's doc comment for the full reasoning: fixed width *and*
     /// height in one `.frame()` call before `.fill` crops it, so every photo renders at the same
-    /// size regardless of its own screenshot's native aspect ratio) - "pictures should be at the
-    /// RIGHT," per live feedback, sized up twice now per repeated "make the media pictures bigger"
-    /// feedback.
+    /// size regardless of its own screenshot's native aspect ratio).
     private var photoGrid: some View {
         let rows = allPhotoPaths.chunked(into: 2)
         return VStack(alignment: .leading, spacing: 12) {
@@ -253,6 +252,7 @@ struct CustomGameDetailView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: 270, height: 155)
+                    .skinArtTreatment()
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(RoundedRectangle(cornerRadius: 10))
                     .onTapGesture { expandedImagePath = path }
@@ -350,7 +350,7 @@ struct CustomGameDetailView: View {
                         Label("Launch", systemImage: "play.fill")
                     }
                 }
-                .buttonStyle(.big)
+                .buttonStyle(.big(accentOverride: gameAccent))
                 .disabled(model.launchingTarget != nil)
                 .frame(maxWidth: 260)
                 .focusRing(isFocused(.launch))

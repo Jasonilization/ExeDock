@@ -179,34 +179,6 @@ input.search::placeholder{color:inherit;opacity:0.6;}
 .pix .prompt{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);font-family:'Press Start 2P';font-size:11px;color:#fff;text-shadow:2px 2px 0 #10121c;animation:pixblink 1s steps(1) infinite;pointer-events:none;}
 @keyframes pixblink{ 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
 
-/* ================= 7. Console ================= */
-.con{ --bg:#1a1a1c; --panel:#232326; --line:#3a3a3f; --fg:#e9e9ec; --sub:#8a8a92; --accent:#ff7a1a; --led:#39ff6a; --brushed1:#1c1c1e; --brushed2:#1a1a1c; --topbar-grad:linear-gradient(180deg,#2a2a2d,#202022); --card-grad:linear-gradient(180deg,#28282b,#1e1e20); --card-line:#000; --search-bg:#101012; --search-line:#000; }
-.con{font-family:'Barlow',sans-serif;color:var(--fg);min-height:100vh;
-  background:
-    linear-gradient(160deg,rgba(255,255,255,.04),transparent 40%),
-    repeating-linear-gradient(115deg,var(--brushed1) 0 2px,var(--brushed2) 2px 4px);}
-.con .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;padding:18px 34px;background:var(--topbar-grad);border-bottom:1px solid var(--card-line);box-shadow:0 1px 0 #3d3d40 inset,0 3px 8px rgba(0,0,0,.4);}
-.con .who{font-family:'Barlow Condensed';font-weight:700;font-size:19px;text-transform:uppercase;letter-spacing:.05em;}
-.con .led{width:8px;height:8px;border-radius:50%;background:var(--led);box-shadow:0 0 8px var(--led);display:inline-block;margin-right:8px;}
-.con .count{font-size:12px;color:var(--sub);}
-.con .spacer{flex:1;}
-.con .search{background:var(--search-bg);border:1px solid var(--search-line);box-shadow:inset 0 2px 4px rgba(0,0,0,.15),0 1px 0 #3a3a3f;border-radius:6px;padding:9px 14px;font-size:12.5px;color:var(--sub);min-width:220px;}
-.con main{padding:34px;max-width:1400px;margin:0 auto;}
-.con h1{font-family:'Barlow Condensed';font-weight:700;font-size:26px;text-transform:uppercase;letter-spacing:.04em;margin:0 0 26px;color:var(--accent);text-shadow:0 0 16px rgba(255,122,26,.4);}
-.con .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:20px;}
-.con .card{background:var(--card-grad);border:1px solid var(--card-line);border-radius:10px;box-shadow:0 1px 0 #3d3d40 inset,0 6px 16px rgba(0,0,0,.4);overflow:hidden;cursor:pointer;}
-.con .art{height:118px;position:relative;border-bottom:1px solid var(--card-line);background-size:cover;background-position:center;filter:contrast(1.1) brightness(.9);}
-.con .badge{position:absolute;top:8px;left:8px;background:#000a;border:1px solid var(--accent);color:var(--accent);font-size:9px;font-weight:700;text-transform:uppercase;padding:3px 7px;border-radius:4px;}
-.con .body{padding:14px 16px 16px;}
-.con .title{font-family:'Barlow Condensed';font-weight:600;font-size:16px;text-transform:uppercase;letter-spacing:.02em;margin:0 0 4px;}
-.con .genre{font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;}
-.con .desc{font-size:12px;color:var(--sub);line-height:1.5;margin:0 0 14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-.con .cta,.con .run{width:100%;padding:10px 0;border-radius:6px;font-family:'Barlow Condensed';font-weight:700;text-transform:uppercase;letter-spacing:.05em;font-size:12.5px;cursor:pointer;border:1px solid #000;}
-.con .cta{background:linear-gradient(180deg,#ff9a44,var(--accent));color:#1a1000;box-shadow:0 2px 0 #9c4c00,0 1px 0 rgba(255,255,255,.3) inset;}
-.con .cta:active{box-shadow:0 0 0 #9c4c00;transform:translateY(2px);}
-.con .run{background:linear-gradient(180deg,#28282b,#1e1e20);color:var(--led);}
-.con .screw{position:absolute;width:6px;height:6px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#555,#000 70%);}
-
 /* ================= 8. Minimal list ================= */
 .lst{ --bg:#ffffff; --fg:#0b0c0f; --sub:#6b6f7a; --line:#e7e8ec; --accent:#0b5fff; }
 [data-stage-theme="dark"] .lst{ --bg:#0b0c0f; --fg:#f2f3f5; --sub:#8a8e99; --line:#1e2026; }
@@ -233,11 +205,10 @@ input.search::placeholder{color:inherit;opacity:0.6;}
 .lst .launch:active{opacity:.5;}
 
 /* ================= Light-mode identities for the "committed dark" skins =================
-   The original mockups gave these four a single dark-only world - a legitimate choice for a static
-   preview. A real, live app is used in both system appearances though, and "make sure they all
-   support dark mode and light mode. follow system for dark/light" is explicit, live feedback: every
-   skin now has a genuine, separately-designed light identity, not the dark palette left unchanged
-   under a lighter page background. Each keeps its own accent language and texture; only the surface
+   The original mockups gave these skins a single dark-only world - a legitimate choice for a
+   static preview. A real, live app is used in both system appearances though, so every skin now
+   has a genuine, separately-designed light identity, not the dark palette left unchanged under a
+   lighter page background. Each keeps its own accent language and texture; only the surface
    colors change. */
 
 /* Terminal, light: a real light-terminal aesthetic (Solarized Light, Xcode Light's own
@@ -257,15 +228,3 @@ input.search::placeholder{color:inherit;opacity:0.6;}
   --bg:#eaf1fb; --panel:#c7d6ef; --fg:#182036; --sub:#46567c;
   --accent:#c97a1e; --accent2:#d9502f; --dot:#c7d6ef; --ink:#182036;
 }
-
-/* Console, light: brushed aluminum instead of gunmetal - a real alternate skeuomorphic register
-   (think an original iMac/PowerBook's own light metal, not a dark studio rack unit), same orange
-   accent and green LED, both already legible on light. */
-[data-stage-theme="light"] .con{
-  --bg:#e7e7ea; --panel:#f4f4f6; --line:#c7c7cc; --fg:#18181a; --sub:#68686f;
-  --accent:#ff7a1a; --led:#1c9a46;
-  --brushed1:#eaeaec; --brushed2:#e2e2e6;
-  --topbar-grad:linear-gradient(180deg,#fafafc,#ececee); --card-grad:linear-gradient(180deg,#fcfcfe,#eeeef0);
-  --card-line:#c7c7cc; --search-bg:#ffffff; --search-line:#c7c7cc;
-}
-[data-stage-theme="light"] .con h1{text-shadow:0 0 12px rgba(255,122,26,.25);}

@@ -12,11 +12,10 @@ struct LibraryPresentation {
     let description: String?
     let isCustom: Bool
 
-    /// What shape of tile is asking - "the UI for the other ones... all the games are cropped,"
-    /// per live feedback: every portrait/square tile was force-cropping the landscape store banner
-    /// because portrait/square art was never looked for at all. Each call site says its own real
-    /// shape so this can hand back whatever Steam actually has cached that fits it, instead of one
-    /// art path everyone force-fits.
+    /// What shape of tile is asking - every portrait/square tile used to force-crop the landscape
+    /// store banner because portrait/square art was never looked for at all. Each call site says
+    /// its own real shape so this can hand back whatever Steam actually has cached that fits it,
+    /// instead of one art path everyone force-fits.
     enum Shape {
         case landscape, portrait, square
     }
@@ -75,9 +74,8 @@ private func artView(path: String?, id: String) -> some View {
 /// A small, square real-art icon for a row-based layout (Sidebar's list, List's rows) - resolves
 /// its own art independently of whatever else on screen is showing that entry, so a row shows the
 /// actual game icon the instant its own fetch completes rather than staying a flat placeholder
-/// color forever. "all small icons are just colours. either remove colours or have square proper
-/// game icons," per live feedback - square real art, falling back to the same placeholder gradient
-/// only for the entries that genuinely have no art at all.
+/// color forever. Square real art, falling back to the same placeholder gradient only for the
+/// entries that genuinely have no art at all.
 private struct SmallArtIcon: View {
     let entry: LibraryEntry
     var size: CGFloat = 30
@@ -87,6 +85,7 @@ private struct SmallArtIcon: View {
     var body: some View {
         artView(path: presentation?.artPath, id: entry.id)
             .frame(width: size, height: size)
+            .skinArtTreatment()
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .task(id: entry.id) { presentation = await LibraryPresentation.resolve(entry, shape: .square) }
     }
@@ -109,13 +108,15 @@ private struct LibraryEntryTile: View {
     @LocalState private var isHovering = false
 
     private var isRunning: Bool { runningTracker.runningGames[entry.id] != nil }
+    private var gameAccent: Color? { presentation?.artPath.flatMap { GameArtColor.dominantColor(forImagePath: $0) } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .topLeading) {
                 artView(path: presentation?.artPath, id: entry.id)
                     .frame(width: width, height: height)
-                    .tileSurface(isHovering: isHovering)
+                    .skinArtTreatment()
+                    .tileSurface(isHovering: isHovering, accentOverride: gameAccent)
                     .onHover { isHovering = $0 }
                 if presentation?.isCustom == true {
                     Text("CUSTOM").font(.system(size: 9, weight: .bold)).padding(4).background(.purple, in: Capsule()).foregroundStyle(.white).padding(6)
@@ -140,10 +141,8 @@ struct LibraryShelvesLayout: View {
     @ObservedObject private var runningTracker = RunningGameTracker.shared
     @LocalState private var featuredPresentation: LibraryPresentation?
     /// Set the instant someone uses the prev/next arrows - once they have, that choice sticks
-    /// (browsing away and back doesn't silently snap back to whatever's running/first). "it's
-    /// always stuck on baldi basics for the main focus... have a button to switch left and right
-    /// games," per live feedback - the hero used to be permanently `entries.first` with no way to
-    /// change it at all.
+    /// (browsing away and back doesn't silently snap back to whatever's running/first). The hero
+    /// used to be permanently `entries.first` with no way to change it at all.
     @LocalState private var manualFeaturedID: String?
 
     private var featured: LibraryEntry? {
@@ -163,7 +162,7 @@ struct LibraryShelvesLayout: View {
             VStack(alignment: .leading, spacing: 0) {
                 if let featured {
                     ZStack(alignment: .bottomLeading) {
-                        artView(path: featuredPresentation?.artPath, id: featured.id).frame(maxWidth: .infinity).frame(height: 300).clipped()
+                        artView(path: featuredPresentation?.artPath, id: featured.id).frame(maxWidth: .infinity).frame(height: 300).skinArtTreatment().clipped()
                         LinearGradient(colors: [.clear, .black.opacity(0.78)], startPoint: .top, endPoint: .bottom).frame(maxWidth: .infinity, maxHeight: 300)
                         VStack(alignment: .leading, spacing: 8) {
                             Text(runningTracker.runningGames[featured.id] != nil ? "CONTINUE PLAYING" : "FEATURED")
@@ -172,7 +171,8 @@ struct LibraryShelvesLayout: View {
                             if let desc = featuredPresentation?.description {
                                 Text(desc).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(2).frame(maxWidth: 460, alignment: .leading)
                             }
-                            Button("View Details") { onOpenDetail(featured) }.buttonStyle(PlaydockButtonStyle())
+                            Button("View Details") { onOpenDetail(featured) }
+                                .buttonStyle(PlaydockButtonStyle(accentOverride: featuredPresentation?.artPath.flatMap { GameArtColor.dominantColor(forImagePath: $0) }))
                         }
                         .padding(32)
                         if entries.count > 1 {
@@ -276,6 +276,7 @@ struct LibrarySidebarLayout: View {
                     ZStack(alignment: .bottomLeading) {
                         artView(path: presentation?.artPath, id: selected.id)
                             .frame(width: max(0, geo.size.width - Self.sidebarWidth), height: geo.size.height)
+                            .skinArtTreatment()
                             .clipped()
                         LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .center, endPoint: .bottom)
                         VStack(alignment: .leading, spacing: 10) {
@@ -284,7 +285,8 @@ struct LibrarySidebarLayout: View {
                             if let desc = presentation?.description {
                                 Text(desc).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(3).frame(maxWidth: 440, alignment: .leading)
                             }
-                            Button("View Details") { onOpenDetail(selected) }.buttonStyle(PlaydockButtonStyle())
+                            Button("View Details") { onOpenDetail(selected) }
+                                .buttonStyle(PlaydockButtonStyle(accentOverride: presentation?.artPath.flatMap { GameArtColor.dominantColor(forImagePath: $0) }))
                         }
                         .padding(32)
                     }
@@ -471,6 +473,7 @@ struct LibrarySpotlightLayout: View {
         if let manualFeaturedID, let match = entries.first(where: { $0.id == manualFeaturedID }) { return match }
         return runningTracker.runningGames.keys.first.flatMap { id in entries.first { $0.id == id } } ?? entries.first
     }
+    private var featuredAccent: Color? { featuredPresentation?.artPath.flatMap { GameArtColor.dominantColor(forImagePath: $0) } }
     private var rest: [LibraryEntry] {
         guard let featured else { return entries }
         return entries.filter { $0.id != featured.id }
@@ -493,7 +496,8 @@ struct LibrarySpotlightLayout: View {
                     HStack(alignment: .center, spacing: 36) {
                         artView(path: featuredPresentation?.artPath, id: featured.id)
                             .frame(width: 420, height: 260)
-                            .tileSurface()
+                            .skinArtTreatment()
+                            .tileSurface(accentOverride: featuredAccent)
                         VStack(alignment: .leading, spacing: 12) {
                             Text(runningTracker.runningGames[featured.id] != nil ? "CURRENTLY PLAYING" : "FEATURED")
                                 .font(.caption.weight(.bold)).foregroundStyle(Color.accentColor)
@@ -502,7 +506,7 @@ struct LibrarySpotlightLayout: View {
                                 Text(desc).font(.body).foregroundStyle(.secondary).lineLimit(4).frame(maxWidth: 480, alignment: .leading)
                             }
                             HStack(spacing: 14) {
-                                Button("View Details") { onOpenDetail(featured) }.buttonStyle(PlaydockButtonStyle())
+                                Button("View Details") { onOpenDetail(featured) }.buttonStyle(PlaydockButtonStyle(accentOverride: featuredAccent))
                                 if entries.count > 1 {
                                     HStack(spacing: 8) {
                                         spotlightNavButton("chevron.left") { cycleFeatured(by: -1) }

@@ -229,17 +229,17 @@ struct GameModeView: View {
                 // available space. Propagated back up via the standard PreferenceKey mechanism
                 // (`GridWidthKey`), not a raw `.onChange` on the captured `geometry` value, for the
                 // same reason: it's the far more standard, battle-tested way to communicate a
-                // descendant's measured size back up a SwiftUI view tree. "library cards still
-                // overlap," repeated live feedback across several fixes at this same spot.
+                // descendant's measured size back up a SwiftUI view tree - the fix for a repeated
+                // library-cards-overlap bug.
                 if libraryLayout == .grid {
-                    // The real per-skin HTML/CSS from the mockups, rendered by an actual WKWebView -
-                    // "I mean identical not just in colour... i dont care how much new UI or
-                    // non-swift UI you need," per live feedback. GeometryReader gives it a real,
-                    // finite frame the same way the earlier Sidebar fix needed - a WKWebView with no
-                    // explicit size proposal from its own SwiftUI ancestor doesn't reliably size
-                    // itself at all. Search now lives inside the page itself (each skin's own
-                    // topbar field, made real) rather than a native field competing with it for the
-                    // same visual real estate the mockups already designed.
+                    // The real per-skin HTML/CSS from the mockups, rendered by an actual WKWebView
+                    // for genuine 1:1 fidelity rather than a SwiftUI approximation. GeometryReader
+                    // gives it a real, finite frame the same way the earlier Sidebar fix needed - a
+                    // WKWebView with no explicit size proposal from its own SwiftUI ancestor
+                    // doesn't reliably size itself at all. Search now lives inside the page itself
+                    // (each skin's own topbar field, made real) rather than a native field
+                    // competing with it for the same visual real estate the mockups already
+                    // designed.
                     GeometryReader { geometry in
                         SkinWebGridView(
                             skin: skin,
@@ -247,9 +247,8 @@ struct GameModeView: View {
                             userName: model.steamProfile?.personaName ?? "Player",
                             // Every skin now has a real, separately-designed light *and* dark
                             // identity in skins.css (not just the six the original mockups already
-                            // had) - "make sure they all support dark mode and light mode. follow
-                            // system for dark/light," per live feedback, so this always reflects the
-                            // Mac's actual current appearance rather than a skin-pinned choice.
+                            // had), so this always reflects the Mac's actual current appearance
+                            // rather than a skin-pinned choice.
                             isDark: systemColorScheme == .dark,
                             onOpen: openLibraryEntry
                         )
@@ -412,8 +411,8 @@ struct GameModeView: View {
         .background(Color.accentColor.opacity(0.12))
     }
 
-    /// Deliberately tiny - "insanely small and unobtrusive," per live feedback, so the games grid
-    /// gets as much of the window as possible. Just enough to identify whose library this is and
+    /// Deliberately tiny and unobtrusive, so the games grid gets as much of the window as
+    /// possible. Just enough to identify whose library this is and
     /// offer Refresh/Settings; everything else (art, ratings, controller navigation) lives in the
     /// grid and the Game Detail view instead of competing for space up here.
     private var header: some View {
@@ -425,7 +424,7 @@ struct GameModeView: View {
                 .foregroundStyle(.secondary)
             Spacer()
             // Grouped under one shared, skin-tinted backing instead of floating as separate bordered
-            // controls - "make sure top bar is the same UI look too," per live feedback. Sort lives
+            // controls, matching the rest of the top bar's own look. Sort lives
             // here rather than inside the grid's own content now - the Grid layout's search/sort
             // strip was replaced by each skin's own real, functional topbar search field (see
             // `SkinWebGridView`), but sort has no equivalent in any of the ten mockups (a real app
@@ -470,7 +469,7 @@ struct GameModeView: View {
         // above the grid, grid above the backdrop) instead of sitting flush/transparent against
         // whatever's behind it, so it reads as its own distinct layer even over a themed backdrop.
         .background(.bar)
-        // "make sure top bar is the same UI look too," per live feedback - this native strip sits
+        // This native strip sits
         // directly above each skin's own real, mockup-identical topbar (inside the WebView-rendered
         // grid) or its own themed backdrop (every other layout), so a flat, unthemed system bar
         // right above it read as an obvious seam. A bottom accent rule in the skin's own color and
@@ -498,8 +497,8 @@ struct GameModeView: View {
 
     /// The way to open Steam itself - double-click, the same gesture as opening anything else on a
     /// Mac. Floats over the bottom-right corner of the whole dashboard (moved off a big centered
-    /// tile that used to take up nearly half the screen, then off the header entirely - "the steam
-    /// icon be at the bottom right," per live feedback), always reachable without competing for
+    /// tile that used to take up nearly half the screen, then off the header entirely), always
+    /// reachable without competing for
     /// space with anything else in the layout. Uses Steam's own real icon when the native Mac
     /// Steam.app is present on this machine (legitimately already installed by the user, same as
     /// how AppIconProvider reads any other already-installed app's icon) - falling back to an
@@ -885,7 +884,7 @@ private struct GameCardView: View {
         .cardSurface(isHovering: isHoveringCard)
         .focusRing(isFocused)
         // Tapping the card opens the full Game Detail view rather than launching straight away -
-        // "it should go into full screen before you can launch," per live feedback, so the grid
+        // launching should always be a deliberate confirm step, so the grid
         // card itself is just an entry point now. A plain single-tap gesture on this container is
         // safe alongside the gearshape Button above (SwiftUI routes a tap within a nested Button's
         // own bounds to that button first) - this is a different situation from the earlier
@@ -1037,8 +1036,8 @@ private struct GameCardView: View {
 
 /// The full "click into a game" detail view - a first-class, Steam-store-like page (big art, genre,
 /// rating, developer, release date, description) reached by tapping a card. Launching now happens
-/// from here rather than directly off the small grid card - "it should go into full screen before
-/// you can launch," per live feedback. Not a real `matchedGeometryEffect` hero animation from the
+/// from here rather than directly off the small grid card, a deliberate confirm step before a
+/// title actually starts. Not a real `matchedGeometryEffect` hero animation from the
 /// exact card tapped, for the same reason `LaunchOverlayView` doesn't attempt one either:
 /// `GameCardView` lives inside a `LazyVGrid`/`ScrollView`, where an off-screen card may not have a
 /// measured frame to animate from. A scale+fade transition (applied by the caller, matching
@@ -1063,12 +1062,12 @@ struct GameDetailView: View {
     /// controller is actually connected (see `availableActions`'s call sites), so mouse-only use
     /// never sees a stray focus ring.
     @LocalState private var focusedActionIndex = 0
-    /// Non-nil while a photo is shown full-size over everything else - "images are expandable for
-    /// the more detail pictures," per live feedback.
+    /// Non-nil while a photo is shown full-size over everything else.
     @LocalState private var expandedImagePath: String?
 
     private var runningInfo: RunningProcessInfo? { runningTracker.runningGames[game.appID] }
     private var hasCustomSettings: Bool { model.perGameConfigs[game.appID] != nil }
+    private var gameAccent: Color? { storeInfo?.headerImagePath.flatMap { GameArtColor.dominantColor(forImagePath: $0) } }
 
     /// Exactly the same conditions `actionRow` already uses to decide what to show - kept as one
     /// list so controller focus always lines up with what's actually on screen (e.g. never
@@ -1120,7 +1119,7 @@ struct GameDetailView: View {
                     VStack(alignment: .leading, spacing: 22) {
                         header
                         // Photos sit in their own column to the right of the text, not stacked
-                        // below it - "pictures should be at the RIGHT," per live feedback.
+                        // below it.
                         HStack(alignment: .top, spacing: 24) {
                             VStack(alignment: .leading, spacing: 22) {
                                 actionRow
@@ -1193,8 +1192,8 @@ struct GameDetailView: View {
                 .frame(width: 32, height: 32)
                 // A real solid backing, not just the SF Symbol's own faint built-in shadow layer -
                 // busy, high-contrast game art (bright whites, bold text baked into the artwork
-                // itself) can wash the old icon-only close button out almost completely. "Stuck" in
-                // a detail view with no visible way out, per live feedback.
+                // itself) could wash the old icon-only close button out almost completely, leaving
+                // no visible way out of a detail view.
                 .background(.black.opacity(0.55), in: Circle())
                 .overlay(Circle().strokeBorder(.white.opacity(0.25)))
         }
@@ -1240,9 +1239,9 @@ struct GameDetailView: View {
         }
     }
 
-    /// The full "About This Game" copy, styled as its own card rather than plain running text -
-    /// "make it better looking with the description," per live feedback. Falls back to the short
-    /// description for anything fetched before this field existed, or with no fuller write-up.
+    /// The full "About This Game" copy, styled as its own card rather than plain running text.
+    /// Falls back to the short description for anything fetched before this field existed, or with
+    /// no fuller write-up.
     @ViewBuilder
     private var descriptionCard: some View {
         if let description = storeInfo?.aboutTheGame ?? storeInfo?.shortDescription {
@@ -1274,12 +1273,10 @@ struct GameDetailView: View {
     /// True whenever there's actually something to put in `photoGrid`.
     private var hasPhotos: Bool { !allPhotoPaths.isEmpty }
 
-    /// A fixed-width column of photos to the right of the text - "pictures should be at the
-    /// RIGHT," per live feedback, after a prior full-width row layout still didn't land right.
-    /// Two thumbnails per row (rather than one) so it's still "rows... without scrolling" rather
-    /// than one long single-file column - sized up twice now per repeated "make the media pictures
-    /// bigger" feedback, with the content column widened to match so the text side doesn't get
-    /// squeezed. Each thumbnail gets both its width *and* height fixed in one `.frame()` call
+    /// A fixed-width column of photos to the right of the text, replacing an earlier full-width row
+    /// layout. Two thumbnails per row rather than one, sized up generously, with the content column
+    /// widened to match so the text side doesn't get squeezed. Each thumbnail gets both its width
+    /// *and* height fixed in one `.frame()` call
     /// before `.fill` crops it, so every photo renders at exactly the same size no matter its own
     /// screenshot's native aspect ratio. Tap one to open the *complete*, uncropped image via
     /// `imageLightbox` - "images are expandable for the more detail pictures."
@@ -1309,6 +1306,7 @@ struct GameDetailView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: 270, height: 155)
+                    .skinArtTreatment()
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(RoundedRectangle(cornerRadius: 10))
                     .onTapGesture { expandedImagePath = path }
@@ -1403,7 +1401,7 @@ struct GameDetailView: View {
                         Label("Launch", systemImage: "play.fill")
                     }
                 }
-                .buttonStyle(.big)
+                .buttonStyle(.big(accentOverride: gameAccent))
                 .disabled(model.launchingTarget != nil)
                 .frame(maxWidth: 260)
                 .focusRing(isFocused(.launch))
@@ -1481,9 +1479,8 @@ private struct DashboardBackdropView: View {
 /// risks a broken-looking animation for a real but relatively rare case. A scale+fade transition
 /// (applied by the caller) gets the same "whoosh" feeling reliably instead. Custom games get the
 /// exact same treatment via `CustomLaunchOverlayView` below - previously they got nothing at all,
-/// so clicking Launch looked like it silently did nothing: "boot any game it should have the
-/// booting screen and also where it's at. for gamers thye just see the screen and think it didn't
-/// work," per live feedback.
+/// so clicking Launch looked like it silently did nothing, easy to mistake for a launch that
+/// failed rather than one quietly starting up in the background.
 private struct LaunchOverlayView: View {
     let game: SteamGame
     let config: GameModeConfig
@@ -1517,8 +1514,7 @@ private struct LaunchOverlayView: View {
 /// The same launch takeover for a custom game - no async metadata fetch needed, since its artwork
 /// path is already sitting right on the model. `statusLine` names where it's actually launching
 /// *from* (Playdock itself, or a specific Sikarugir wrapper app when the launch was delegated to
-/// one) instead of an engine/D3D summary, which wouldn't mean anything to a player either way -
-/// "also...where it's at," per live feedback.
+/// one) instead of an engine/D3D summary, which wouldn't mean anything to a player either way.
 private struct CustomLaunchOverlayView: View {
     let game: CustomGame
     let statusLine: String
