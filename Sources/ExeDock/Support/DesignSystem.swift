@@ -559,10 +559,15 @@ struct PlaydockButtonBody: View {
         if look.neumorphic && !isPressed {
             // Real --sd/--hl, not a generic black/white wash - see softShadowHighlight's own doc
             // comment for why the wash version went invisible against Soft's dark background.
+            // .neu .cta{box-shadow:5px 5px 10px var(--sd),-5px -5px 10px var(--hl);} - a real,
+            // confirmed bug: this used to port that as offset 3/blur 4, well under half the real
+            // CSS's spread. At that size the glow only ever peeked a couple of points past the
+            // button's own edge - invisible in practice next to a photographic hero background,
+            // and barely there even on a plain card. 5/10 is the real number, not a guess.
             let pair = softShadowHighlight(isDark: colorScheme == .dark)
             ZStack {
-                shape.fill(pair.shadow).offset(x: 3, y: 3).blur(radius: 4)
-                shape.fill(pair.highlight).offset(x: -3, y: -3).blur(radius: 4)
+                shape.fill(pair.shadow).offset(x: 5, y: 5).blur(radius: 10)
+                shape.fill(pair.highlight).offset(x: -5, y: -5).blur(radius: 10)
             }
         }
     }

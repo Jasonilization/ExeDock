@@ -163,25 +163,30 @@ private struct CDriveRow: View {
     let onReveal: () -> Void
 
     var body: some View {
-        Button(action: onActivate) {
-            HStack(spacing: 10) {
-                Image(nsImage: AppIconProvider.icon(forPath: entry.path))
-                    .resizable()
-                    .frame(width: 26, height: 26)
-                Text(entry.name)
-                    .font(.body)
-                Spacer()
-                if entry.isExecutable {
-                    Text("Run").font(.callout.weight(.medium)).foregroundStyle(Color.accentColor)
-                }
-                Button(action: onReveal) {
-                    Image(systemName: "folder")
-                }
-                .buttonStyle(.borderless)
+        // A real, confirmed bug: this used to be one outer Button wrapping the whole row *and* a
+        // second, nested Button for "reveal in Finder" inside it - a Button inside a Button inside
+        // a List row with no selection binding, which macOS SwiftUI doesn't hit-test reliably.
+        // Live test: clicking a folder row did nothing at all, every time, on every row. Tap
+        // gesture + contentShape is the same pattern LibraryEntryTile already uses for exactly this
+        // reason - a plain, working row tap with a real sibling button for the one thing that needs
+        // its own separate action, not a control nested inside another control.
+        HStack(spacing: 10) {
+            Image(nsImage: AppIconProvider.icon(forPath: entry.path))
+                .resizable()
+                .frame(width: 26, height: 26)
+            Text(entry.name)
+                .font(.body)
+            Spacer()
+            if entry.isExecutable {
+                Text("Run").font(.callout.weight(.medium)).foregroundStyle(Color.accentColor)
             }
+            Button(action: onReveal) {
+                Image(systemName: "folder")
+            }
+            .buttonStyle(.borderless)
         }
-        .buttonStyle(.plain)
         .contentShape(Rectangle())
+        .onTapGesture(perform: onActivate)
         .focusRing(isFocused)
     }
 }
