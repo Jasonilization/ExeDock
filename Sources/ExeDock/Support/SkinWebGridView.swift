@@ -32,6 +32,11 @@ struct SkinWebGridView: NSViewRepresentable {
     let entries: [SkinWebGridEntry]
     let userName: String
     let isDark: Bool
+    /// The card a controller's D-pad currently has focused, by index into `entries` - `nil` while
+    /// no controller is connected or focus is elsewhere (a toolbar button, the floating Steam
+    /// icon). The page has no idea a controller exists at all; this just tells it which card to
+    /// draw the ring around, via `window.PlaydockSetFocus` (see that function's own doc comment).
+    var focusedIndex: Int?
     let onOpen: (String) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(onOpen: onOpen) }
@@ -60,6 +65,7 @@ struct SkinWebGridView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.onOpen = onOpen
         context.coordinator.render(skin: skin, entries: entries, userName: userName, isDark: isDark)
+        context.coordinator.setFocus(focusedIndex)
     }
 
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
@@ -96,6 +102,15 @@ struct SkinWebGridView: NSViewRepresentable {
             guard let metaJSON = jsonString(meta) else { return }
             let js = "window.PlaydockRender && window.PlaydockRender(\(jsLiteral(skin.rawValue)), \(jsLiteral(entriesJSON)), \(jsLiteral(metaJSON)));"
             webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        /// `index` is `nil` when nothing should be highlighted right now (no controller, or focus
+        /// is on a native control outside the grid) - only actually calls into the page once it's
+        /// ready, same deferred-until-loaded contract `render(skin:entries:userName:isDark:)` has.
+        func setFocus(_ index: Int?) {
+            guard isPageReady, let webView else { return }
+            let arg = index.map(String.init) ?? "null"
+            webView.evaluateJavaScript("window.PlaydockSetFocus && window.PlaydockSetFocus(\(arg));", completionHandler: nil)
         }
 
         private struct WebMeta: Encodable { let user: String; let theme: String }

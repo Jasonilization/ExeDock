@@ -157,6 +157,7 @@ struct LibraryShelvesLayout: View {
     let entries: [LibraryEntry]
     let onOpenDetail: (LibraryEntry) -> Void
     @ObservedObject private var runningTracker = RunningGameTracker.shared
+    @ObservedObject private var controllerObserver = ControllerObserver.shared
     @LocalState private var featuredPresentation: LibraryPresentation?
     @LocalState private var featuredAccent: Color?
     @AppStorage(PlaydockSkin.storageKey) private var skinRaw: String = PlaydockSkin.luxury.rawValue
@@ -214,6 +215,16 @@ struct LibraryShelvesLayout: View {
                 if !customEntries.isEmpty { shelf("Custom Games", customEntries) }
                 shelf("Your Library", entries)
             }
+        }
+        // LT/RT cycle the featured hero - the same prev/next arrows already do, real use for the
+        // trigger buttons here instead of leaving them meaningful only in Carousel/Spotlight.
+        .onChange(of: controllerObserver.gameStepRequest?.token) { _ in
+            guard let direction = controllerObserver.gameStepRequest?.direction else { return }
+            cycleFeatured(by: direction)
+        }
+        .onChange(of: controllerObserver.primaryPress) { _ in
+            guard controllerObserver.isConnected, let featured else { return }
+            onOpenDetail(featured)
         }
     }
 
@@ -469,6 +480,14 @@ struct LibraryCarouselLayout: View {
                     }
                     withAnimation { scrollProxy.scrollTo(focused, anchor: .center) }
                 }
+                // LT/RT step the same row D-pad left/right already does - "switching between games
+                // in carousel," per live feedback, giving the trigger buttons real use here instead
+                // of leaving them meaningful only for the app's own top-level tab switch.
+                .onChange(of: controllerObserver.gameStepRequest?.token) { _ in
+                    guard let direction = controllerObserver.gameStepRequest?.direction else { return }
+                    moveFocus(by: direction)
+                    withAnimation { scrollProxy.scrollTo(focused, anchor: .center) }
+                }
                 .onChange(of: controllerObserver.primaryPress) { _ in
                     guard controllerObserver.isConnected, let focusedEntry else { return }
                     onOpenDetail(focusedEntry)
@@ -522,6 +541,7 @@ struct LibrarySpotlightLayout: View {
     let isDark: Bool
     let onOpenDetail: (LibraryEntry) -> Void
     @ObservedObject private var runningTracker = RunningGameTracker.shared
+    @ObservedObject private var controllerObserver = ControllerObserver.shared
     @LocalState private var featuredPresentation: LibraryPresentation?
     @LocalState private var featuredAccent: Color?
     /// Sticks once someone browses manually - see `LibraryShelvesLayout`'s identical field for why.
@@ -607,6 +627,16 @@ struct LibrarySpotlightLayout: View {
                 }
             }
             .padding(.bottom, 40)
+        }
+        // LT/RT cycle the featured game - "switching between games in... spotlight for the main
+        // game," per live feedback - the same real function the prev/next arrows already call.
+        .onChange(of: controllerObserver.gameStepRequest?.token) { _ in
+            guard let direction = controllerObserver.gameStepRequest?.direction else { return }
+            cycleFeatured(by: direction)
+        }
+        .onChange(of: controllerObserver.primaryPress) { _ in
+            guard controllerObserver.isConnected, let featured else { return }
+            onOpenDetail(featured)
         }
     }
 

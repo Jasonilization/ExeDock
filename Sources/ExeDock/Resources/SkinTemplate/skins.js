@@ -267,3 +267,22 @@ window.PlaydockRenderGridFragment = function (skinKey, gamesJSON, themeJSON) {
   const skinClass = SKIN_CLASS[skinKey] || SKIN_CLASS.luxury;
   stage.innerHTML = `<div class="${skinClass} grid-fragment"><div class="grid">${cardsFn(games)}</div></div>`;
 };
+
+// A controller's D-pad has no native concept of "hovering" a card the way a mouse does, and this
+// page has no idea a controller even exists - Swift is the one tracking which index is focused
+// (ControllerObserver/DashboardFocusTarget), so it just tells the page which card that is on every
+// change. Cards render in the exact same order `games` was passed in (CARDS.* maps over it
+// in order), so index N here really is entry N's own card, no separate id-matching needed. Called
+// with `null`/undefined to clear focus entirely (controller disconnected, or focus moved to a
+// native control outside the grid).
+window.PlaydockSetFocus = function (index) {
+  const cards = document.querySelectorAll('#stage .card');
+  cards.forEach((el, i) => {
+    if (index != null && i === index) {
+      el.classList.add('controller-focus');
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } else {
+      el.classList.remove('controller-focus');
+    }
+  });
+};

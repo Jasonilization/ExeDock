@@ -87,6 +87,7 @@ struct CDriveView: View {
                     }
                 }
             }
+            ControllerLegendBar(hints: controllerObserver.moveSelectBackHints + [controllerObserver.switchTabHint])
         }
         .onAppear {
             if selectedBottleID == nil { selectedBottleID = selectedBottle?.id }

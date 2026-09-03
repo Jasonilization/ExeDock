@@ -250,9 +250,25 @@ struct GameModeView: View {
                             // had), so this always reflects the Mac's actual current appearance
                             // rather than a skin-pinned choice.
                             isDark: systemColorScheme == .dark,
+                            // The real, confirmed gap behind "can't navigate right now": Grid's
+                            // cards render inside this WebView, which has no idea a controller
+                            // exists - `focusedTarget`'s own .card(index) case was already tracked
+                            // correctly (moveFocus/activateFocusedTarget below), it just had nowhere
+                            // to draw a visible ring. See window.PlaydockSetFocus in skins.js.
+                            focusedIndex: focusedCardIndex,
                             onOpen: openLibraryEntry
                         )
                         .frame(width: geometry.size.width, height: geometry.size.height)
+                        // Real, measured width for controller D-pad row math (`columnCount`) below -
+                        // a genuine, previously-unfinished gap: `gridWidth` was declared and read but
+                        // never actually *set* anywhere, so Up/Down always fell back to moving by
+                        // exactly one card (column count stuck at 1) instead of jumping a full visual
+                        // row - confusing on any grid wider than one column. This GeometryReader
+                        // already measures the real content width the WebView itself is sized to, so
+                        // it's the correct, direct source - no separate PreferenceKey plumbing needed
+                        // since nothing sits between this closure and the state it's updating.
+                        .onAppear { gridWidth = geometry.size.width }
+                        .onChange(of: geometry.size.width) { gridWidth = $0 }
                     }
                     .task(id: libraryEntries.map(\.id)) {
                         await resolveLibraryPresentations()
@@ -283,6 +299,12 @@ struct GameModeView: View {
                     detailGame == nil && detailCustomGame == nil && launchOverlayGame == nil
                         && launchOverlayCustomGame == nil && !showingControllerMode
                 )
+
+            if isDashboardTheActiveControllerLayer {
+                ControllerLegendBar(hints: dashboardControllerHints)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .allowsHitTesting(false)
+            }
 
             if let detailGame {
                 GameDetailView(game: detailGame, isAdvancedMode: isAdvancedMode) {
@@ -652,10 +674,18 @@ struct GameModeView: View {
     /// the grid's own rendering anymore, so an imprecise `gridWidth` measurement here can make
     /// D-pad up/down jump the "wrong" number of cards at worst, never break the actual visual
     /// layout the way it did when this same measurement was load-bearing for column count itself.
+    /// Grid's real, live layout is the WebView's own CSS - `.grid{grid-template-columns:repeat(
+    /// auto-fill,minmax(250px,1fr));gap:24px;}` in skins.css, a fixed 250px/24px regardless of how
+    /// many entries there are - not `idealCardSizeTier` (a *different*, count-dependent sizing table
+    /// that only ever applied to the native `GameCardView` grid, which nothing renders anymore).
+    /// Using the wrong constants here doesn't break the actual grid, but it does make the D-pad ring
+    /// jump to a visually wrong row - exactly the kind of thing that reads as "navigation is broken"
+    /// even though the mechanism underneath works.
+    private static let webCardMinWidth: CGFloat = 250
+    private static let webCardGap: CGFloat = 24
     private var columnCount: Int {
         guard gridWidth > 0 else { return 1 }
-        let minWidth = idealCardSizeTier.minWidth
-        return max(1, Int((gridWidth + Self.gridSpacing) / (minWidth + Self.gridSpacing)))
+        return max(1, Int((gridWidth + Self.webCardGap) / (Self.webCardMinWidth + Self.webCardGap)))
     }
 
     private var artworkHeight: CGFloat { idealCardSizeTier.artworkHeight }
@@ -665,6 +695,27 @@ struct GameModeView: View {
     /// `ControllerObserver`'s "single owner, self-filtering subscribers" design.
     private var isDashboardTheActiveControllerLayer: Bool {
         detailGame == nil && detailCustomGame == nil && !showingControllerMode
+    }
+
+    /// `focusedTarget`'s own `.card` index, for `SkinWebGridView`'s `focusedIndex` - `nil` for
+    /// every other target (toolbar, Steam icon) or while no controller is connected, so the WebView
+    /// only ever shows a ring while there's a real card focused for it to show.
+    private var focusedCardIndex: Int? {
+        guard controllerObserver.isConnected, case .card(let index) = focusedTarget else { return nil }
+        return index
+    }
+
+    /// The real on-screen control legend for whichever layout is actually showing - "markers for
+    /// how to control," per live feedback. LT/RT only get a hint on the three layouts that actually
+    /// have one game singled out for them to step through (Carousel, Shelves, Spotlight); Grid,
+    /// Sidebar, and Steam-style don't claim a button that does nothing there.
+    private var dashboardControllerHints: [ControllerHint] {
+        var hints = controllerObserver.moveSelectBackHints
+        hints.append(controllerObserver.switchTabHint)
+        if libraryLayout == .carousel || libraryLayout == .shelves || libraryLayout == .spotlight {
+            hints.append(controllerObserver.switchGameHint)
+        }
+        return hints
     }
 
     /// Real 2D movement across every focusable spot on the dashboard: the toolbar row above the

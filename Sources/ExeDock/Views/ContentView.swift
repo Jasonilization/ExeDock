@@ -47,7 +47,7 @@ struct ContentView: View {
             guard let direction = controllerObserver.sectionStepRequest?.direction else { return }
             stepSection(by: direction)
         }
-        // Switching back to the Steam dashboard (from either the button or a controller's LT/RT)
+        // Switching back to the Steam dashboard (from either the button or a controller's LB/RB)
         // re-scans it fresh, so a game installed or removed while looking at Library/C: Drive
         // shows up without a full relaunch.
         .onChange(of: model.selectedSection) { newValue in
@@ -93,11 +93,12 @@ struct ContentView: View {
 
     /// A compact, always-in-the-same-spot switcher instead of a full sidebar column - keeps the
     /// window's whole width for the dashboard, and (unlike a sidebar list) is something a
-    /// controller can drive directly: LT/RT step through it from anywhere in the app, wired
+    /// controller can drive directly: LB/RB step through it from anywhere in the app, wired
     /// globally by `ControllerObserver` rather than needing this specific view to be focused.
     private var topBar: some View {
         HStack(spacing: 14) {
             sectionSwitcher
+                .overlay(alignment: .bottom) { ControllerConnectedGlow() }
             Spacer()
             if model.selectedSection != .gameMode {
                 Button {
