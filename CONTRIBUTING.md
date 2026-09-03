@@ -22,12 +22,13 @@ cd Playdock
 That produces `build/Playdock.app`. To package a `.dmg` the way releases ship:
 
 ```sh
-./Scripts/make_dmg.sh 1.2.0   # -> dist/Playdock-1.2.0.dmg
+./Scripts/make_dmg.sh X.Y.Z   # -> dist/Playdock-X.Y.Z.dmg
 ```
 
-Requires [Sikarugir Creator](https://sikarugir.app) to already have at least one Wine engine
-downloaded (`~/Library/Application Support/Sikarugir/Engines/`) the first time you run the built
-app, unless you're online - a fresh build will fetch its own engine copy automatically.
+The first time you run the built app, it downloads and sets up its own Wine engine and runtime
+libraries automatically - nothing else to install first. If [Sikarugir
+Creator](https://sikarugir.app) is already installed with an engine downloaded
+(`~/Library/Application Support/Sikarugir/Engines/`), Playdock reuses that instead.
 
 Run the test suite with:
 
@@ -54,9 +55,15 @@ swift test
   ever reads from it. Playdock's own state lives entirely under `~/Library/Application
   Support/ExeDock/` (yes, still named `ExeDock` internally - see the README for why that's
   deliberate).
-- **The ten skins live in `Sources/ExeDock/Resources/SkinTemplate/`** (`skins.css` + `skins.js`),
-  rendered by a real `WKWebView` (`SkinWebGridView.swift`) - not hand-approximated in SwiftUI. If
-  you're adding or tweaking a skin, edit those files directly; changes take effect on the next
+- **The seven skins live in `Sources/ExeDock/Resources/SkinTemplate/`** (`skins.css` + `skins.js`),
+  rendered by a real `WKWebView` for the Grid layout (`SkinWebGridView.swift`) and, for Steam-style/
+  Spotlight's own card-grid sections, a lighter fragment of the same real markup
+  (`SkinWebGridFragmentView.swift`) - not hand-approximated in SwiftUI. If you're adding or tweaking
+  a skin's *look*, edit `skins.css`/`skins.js` directly; the four remaining native-SwiftUI layouts
+  (Shelves, Sidebar, List, Carousel) read the same tokens back out through
+  `Sources/ExeDock/Support/DesignSystem.swift` (`cardSurface()`/`tileSurface()`/
+  `playdockButtonLook()`), so a real skin change belongs in the CSS/JS first and gets ported into
+  that file to match, not invented there independently. Changes take effect on the next
   `./Scripts/build_app.sh` (no Xcode preview available on this toolchain, so testing means an
   actual rebuild + relaunch).
 

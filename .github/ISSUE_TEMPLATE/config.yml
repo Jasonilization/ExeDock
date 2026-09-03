@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Jasonilization/Playdock/security/policy
+    about: Please don't open a public issue for security issues - see SECURITY.md for how to report privately instead.

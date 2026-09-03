@@ -1,5 +1,8 @@
 # Playdock
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Wiki](https://img.shields.io/badge/docs-wiki-informational.svg)](https://github.com/Jasonilization/Playdock/wiki)
+
 A Mac dashboard for the Windows games (and programs) you're already running through Wine - built
 on top of the Sikarugir engine, not instead of it.
 
@@ -87,7 +90,7 @@ No Xcode required, just Swift + Command Line Tools:
 
 ```sh
 ./Scripts/build_app.sh        # swift build -c release, assemble Playdock.app, codesign
-./Scripts/make_dmg.sh 1.2.0   # package dist/Playdock-1.2.0.dmg
+./Scripts/make_dmg.sh X.Y.Z   # package dist/Playdock-X.Y.Z.dmg
 ```
 
 ## What's new

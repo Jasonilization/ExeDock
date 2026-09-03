@@ -25,7 +25,7 @@ body:
     id: playdock-version
     attributes:
       label: Playdock version
-      description: Settings → About, or the .dmg/release you downloaded.
+      description: Playdock menu → About Playdock, or the .dmg/release you downloaded.
     validations:
       required: true
   - type: input
