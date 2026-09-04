@@ -153,7 +153,6 @@ function design_luxury(games, meta) {
   return `
     <div class="lux">
       <div class="topbar">
-        <div><div class="who">${esc(meta.user)}</div><div class="count">${games.length} games</div></div>
         <div class="spacer"></div>
         <input id="search-input" class="search" type="text" placeholder="Search your games" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)">
       </div>
@@ -169,7 +168,7 @@ function design_luxury(games, meta) {
 function design_brutal(games, meta) {
   return `
     <div class="brut">
-      <div class="topbar"><div class="who">PLAYDOCK</div><div class="count">${games.length} GAMES</div><input id="search-input" class="search" type="text" placeholder="SEARCH YOUR GAMES_" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
+      <div class="topbar"><div class="who">PLAYDOCK</div><input id="search-input" class="search" type="text" placeholder="SEARCH YOUR GAMES_" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
       <main><h1>Library</h1><div class="grid">${CARDS.brutalist(games)}</div></main>
     </div>`;
 }
@@ -185,7 +184,7 @@ function design_cyber(games, meta) {
     : `${games.length} games${customCount ? ` · ${customCount} custom` : ''}`;
   return `
     <div class="cyber">
-      <div class="topbar"><span class="who">PLAY//DOCK</span><span class="count">${esc(meta.user)} · ${games.length} games</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="&gt; search_" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
+      <div class="topbar"><span class="who">PLAY//DOCK</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="&gt; search_" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
       <main><h1>LIBRARY.SYS</h1><p class="kicker">${esc(kicker)}</p><div class="grid">${CARDS.cyber(games)}</div></main>
     </div>`;
 }
@@ -194,7 +193,7 @@ function design_cyber(games, meta) {
 function design_neu(games, meta) {
   return `
     <div class="neu">
-      <div class="topbar"><div><div class="who">${esc(meta.user)}</div><div class="count">${games.length} games</div></div><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="Search your games" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
+      <div class="topbar"><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="Search your games" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
       <main><h1>Your Library</h1><div class="grid">${CARDS.soft(games)}</div></main>
     </div>`;
 }
@@ -203,7 +202,7 @@ function design_neu(games, meta) {
 function design_pixel(games, meta) {
   return `
     <div class="pix">
-      <div class="topbar"><span class="who">PLAYDOCK</span><span class="count">P1: ${esc(meta.user.toUpperCase())} · ${games.length} CARTS</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="FIND GAME_" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
+      <div class="topbar"><span class="who">PLAYDOCK</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="FIND GAME_" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
       <main><h1>SELECT GAME</h1><div class="grid">${CARDS.pixel(games)}</div></main>
       <div class="prompt">PRESS A TO SELECT</div>
     </div>`;
@@ -222,7 +221,7 @@ function design_list(games, meta) {
     </div>`).join('');
   return `
     <div class="lst">
-      <div class="topbar"><span class="who">Playdock</span><span class="count">${esc(meta.user)} · ${games.length} games</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="Search" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
+      <div class="topbar"><span class="who">Playdock</span><div class="spacer"></div><input id="search-input" class="search" type="text" placeholder="Search" value="${esc(QUERY)}" oninput="handleSearchInput(this.value)"></div>
       <main>
         <h1>Library</h1>
         <p class="sub">Sorted by name</p>

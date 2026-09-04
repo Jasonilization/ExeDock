@@ -505,13 +505,7 @@ struct GameModeView: View {
             // Add/Refresh/Settings instead of being dropped - it still governs every layout's
             // ordering, not just Grid's.
             HStack(spacing: 6) {
-                Picker("Sort", selection: $sortOption) {
-                    ForEach(GameSortOption.allCases) { option in
-                        Text(option.rawValue).tag(option)
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(width: 180)
+                sortMenu
                 headerIconButton(systemImage: "plus", help: "Add Game", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(0)) {
                     showingAddGameSheet = true
                 }
@@ -538,19 +532,60 @@ struct GameModeView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        // A subtle material behind the toolbar row - the top of a real surface stack (toolbar
-        // above the grid, grid above the backdrop) instead of sitting flush/transparent against
-        // whatever's behind it, so it reads as its own distinct layer even over a themed backdrop.
-        .background(.bar)
-        // This native strip sits
-        // directly above each skin's own real, mockup-identical topbar (inside the WebView-rendered
-        // grid) or its own themed backdrop (every other layout), so a flat, unthemed system bar
-        // right above it read as an obvious seam. A bottom accent rule in the skin's own color and
-        // border weight - the same language `cardSurface()` already uses - ties it back in without
-        // needing a bespoke reskin of genuinely native, non-mockup chrome (Add/Refresh/Settings/Sort).
+        // "make sure the top bar matches (the account and sort part) the colour etc." - this used
+        // to be a generic `.bar` material with just an accent-colored bottom rule standing in for
+        // real theming. Now the exact same real `.topbar` background/border/glow every other
+        // themed chrome row in the app uses (`PlaydockSkin.topBarBackground`'s own doc comment has
+        // the real per-skin CSS values this ports), not an approximation.
+        .background(skin.topBarBackground)
         .overlay(alignment: .bottom) {
-            Rectangle().fill(skin.accent.opacity(0.55)).frame(height: skin.borderWidth)
+            if let borderColor = skin.topBarBorderColor {
+                Rectangle()
+                    .fill(borderColor)
+                    .frame(height: skin.topBarBorderWidth)
+                    .shadow(color: skin.topBarHasGlow ? skin.accent.opacity(0.7) : .clear, radius: 6, y: 2)
+            }
         }
+        .animation(.easeInOut(duration: 0.25), value: skinRaw)
+    }
+
+    /// "make the sorting part on the top way better visually" - the plain native `Picker` this
+    /// replaced rendered as bare system menu chrome with no relationship to the active skin at
+    /// all. A themed pill - icon, current value, chevron - in the skin's own accent, matching the
+    /// same capsule/border language `PlaydockButtonStyle`'s compact buttons already use elsewhere.
+    private var sortMenu: some View {
+        Menu {
+            ForEach(GameSortOption.allCases) { option in
+                Button {
+                    sortOption = option
+                } label: {
+                    if option == sortOption {
+                        Label(option.rawValue, systemImage: "checkmark")
+                    } else {
+                        Text(option.rawValue)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.caption.weight(.semibold))
+                Text(sortOption.rawValue)
+                    .font(.callout.weight(.medium))
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .fontDesign(skin.fontDesign)
+            .foregroundStyle(skin.accent)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(skin.accent.opacity(0.12), in: Capsule())
+            .overlay(Capsule().strokeBorder(skin.accent.opacity(0.3), lineWidth: skin.borderWidth))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .animation(.easeInOut(duration: 0.2), value: sortOption)
     }
 
     /// A soft rounded-square, icon-only button - used for the header's secondary actions

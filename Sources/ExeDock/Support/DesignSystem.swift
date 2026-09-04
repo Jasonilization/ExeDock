@@ -119,6 +119,51 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
         }
     }
 
+    /// This skin's real `.topbar` background from skins.css - "top bar will be the same look...
+    /// every aspect of the app should be the appearance," per live feedback: the sticky header
+    /// strip above the dashboard (and C: Drive's own header row) stayed on native window chrome
+    /// regardless of skin until now. Ported directly from each skin's own real CSS rule, not an
+    /// approximation - Pixel's real `.topbar` uses its own `--panel` token, a genuinely different
+    /// color from the page's own `--bg`, not a mistake carried over from the other five.
+    var topBarBackground: Color {
+        switch self {
+        case .luxury: return Self.dynamicAccent(light: (0.965, 0.961, 0.953), dark: (0.082, 0.078, 0.071)) // #f6f5f3 / #151412
+        case .brutalist: return Self.dynamicAccent(light: (0.996, 0.965, 0.894), dark: (0.090, 0.078, 0.063)) // #fef6e4 / #171410
+        case .cyber: return Self.dynamicAccent(light: (0.933, 0.961, 0.969), dark: (0.020, 0.027, 0.039)) // #eef5f7 / #05070a
+        case .soft: return Self.dynamicAccent(light: (0.902, 0.906, 0.933), dark: (0.169, 0.176, 0.227)) // #e6e7ee / #2b2d3a
+        case .pixel: return Self.dynamicAccent(light: (0.780, 0.839, 0.937), dark: (0.161, 0.212, 0.435)) // #c7d6ef / #29366f (--panel)
+        case .minimal: return Self.dynamicAccent(light: (1.0, 1.0, 1.0), dark: (0.043, 0.047, 0.059)) // #ffffff / #0b0c0f
+        }
+    }
+
+    /// `nil` for Soft, whose real `.topbar{...}` rule has no border at all - every other skin's
+    /// real value, not a generic hairline. `Color.primary` already flips light/dark exactly the
+    /// way Luxury's `#111`/`#fefbf3` (border-color literally equals `--fg` there) and Brutalist's
+    /// identical pattern do, so those two don't need their own dynamic color at all.
+    var topBarBorderColor: Color? {
+        switch self {
+        case .luxury: return Color.primary.opacity(0.08) // rgba(0,0,0,.08) / rgba(255,255,255,.08)
+        case .brutalist: return Color.primary // #111 / #fefbf3, same as --fg
+        case .cyber: return accent // real accent-colored border, plus the glow this skin's own real box-shadow adds (see topBarGlow)
+        case .soft: return nil
+        case .pixel: return Color(red: 0.337, green: 0.424, blue: 0.525) // #566c86 - fixed, no light/dark override in the real CSS either
+        case .minimal: return Self.dynamicAccent(light: (0.906, 0.910, 0.925), dark: (0.118, 0.125, 0.149)) // #e7e8ec / #1e2026
+        }
+    }
+
+    /// Brutalist and Pixel's real `.topbar` border is a thick `4px`, not a hairline - everyone
+    /// else's is `1px` (Soft has none at all, so this is moot for it).
+    var topBarBorderWidth: CGFloat {
+        switch self {
+        case .brutalist, .pixel: return 4
+        default: return 1
+        }
+    }
+
+    /// Only Cyber's real `.topbar` adds `box-shadow:0 1px 12px -2px var(--accent)` - a genuine
+    /// neon glow under the hairline border, not just a flat line like the other five.
+    var topBarHasGlow: Bool { self == .cyber }
+
     /// A card's own corner radius under this skin - brutalist/pixel go sharp, everything else
     /// stays rounded to some degree.
     var cardRadius: CGFloat {

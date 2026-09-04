@@ -5,6 +5,8 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var controllerObserver = ControllerObserver.shared
+    @AppStorage(PlaydockSkin.storageKey) private var skinRaw = PlaydockSkin.luxury.rawValue
+    private var skin: PlaydockSkin { PlaydockSkin(rawValue: skinRaw) ?? .luxury }
     @LocalState private var isTargeted = false
     /// A global "make everything bigger or smaller" size control. A real UI scale rather than a
     /// plain visual zoom - a bare `.scaleEffect` on its own is a pure *visual* zoom - it can push
@@ -23,7 +25,9 @@ struct ContentView: View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
                 topBar
-                Divider()
+                // No separate Divider() here - topBar's own real per-skin bottom border (see its
+                // doc comment) already does this seam's job; a second, flat gray line right under
+                // a themed border doubled the seam the same way GameModeView's header fix did.
                 VStack(spacing: 0) {
                     // The Steam dashboard has its own header/search/launch flow - the generic drop
                     // zone and toolbar only make sense on the Exe Loader side, so they'd just be
@@ -95,6 +99,12 @@ struct ContentView: View {
     /// window's whole width for the dashboard, and (unlike a sidebar list) is something a
     /// controller can drive directly: LB/RB step through it from anywhere in the app, wired
     /// globally by `ControllerObserver` rather than needing this specific view to be focused.
+    /// "top bar will be the same look... every aspect of the app should be the appearance," per
+    /// live feedback - this used to be plain native window chrome regardless of skin, the one
+    /// piece of visible UI that never picked up the active look. Real per-skin background/border
+    /// (`skin.topBarBackground`/`topBarBorderColor`/`topBarBorderWidth`/`topBarHasGlow`, ported
+    /// directly from each skin's own real `.topbar` CSS rule - see `PlaydockSkin`'s own doc
+    /// comments for the exact values), not a generic material tint.
     private var topBar: some View {
         HStack(spacing: 14) {
             sectionSwitcher
@@ -106,18 +116,31 @@ struct ContentView: View {
                 } label: {
                     Label("Select EXE…", systemImage: "doc.badge.plus")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(PlaydockButtonStyle(prominent: false, skinOverride: skin))
                 Button {
                     model.installAndRunSteam()
                 } label: {
                     Label("Install & Run Steam", systemImage: "gamecontroller.fill")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(PlaydockButtonStyle(skinOverride: skin))
                 .disabled(model.isInstallingSteam)
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+        .fontDesign(skin.fontDesign)
+        .background(skin.topBarBackground)
+        .overlay(alignment: .bottom) {
+            if let borderColor = skin.topBarBorderColor {
+                Rectangle()
+                    .fill(borderColor)
+                    .frame(height: skin.topBarBorderWidth)
+                    .shadow(color: skin.topBarHasGlow ? skin.accent.opacity(0.7) : .clear, radius: 6, y: 2)
+            }
+        }
+        // "add smooth af things too" - switching skins (Settings, or the setup wizard) crossfades
+        // the whole bar's real color identity instead of snapping between two flat colors.
+        .animation(.easeInOut(duration: 0.25), value: skinRaw)
     }
 
     private var sectionSwitcher: some View {
@@ -145,8 +168,12 @@ struct ContentView: View {
                 .frame(width: 46, height: 36)
         }
         .buttonStyle(.plain)
-        .background(isSelected ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+        .background(isSelected ? skin.accent.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: skin.cardRadius > 12 ? 8 : skin.cardRadius))
+        .foregroundStyle(isSelected ? skin.accent : Color.secondary)
+        // "add smooth af things too" - a real spring pop on selection instead of the flat instant
+        // swap the accent-color background/foreground used to do.
+        .scaleEffect(isSelected ? 1.06 : 1)
+        .animation(.spring(response: 0.32, dampingFraction: 0.65), value: isSelected)
         .help(title(for: section))
     }
 
@@ -195,9 +222,10 @@ struct ContentView: View {
         VStack(spacing: 10) {
             Image(systemName: "arrow.down.doc")
                 .font(.system(size: 34))
-                .foregroundStyle(isTargeted ? Color.accentColor : .secondary)
+                .foregroundStyle(isTargeted ? skin.accent : .secondary)
             Text(isTargeted ? "Drop to run" : "Drag an .exe here to run it")
                 .font(.title3)
+                .fontDesign(skin.fontDesign)
             if let status = model.statusMessage {
                 Text(status).font(.footnote).foregroundStyle(.secondary)
             }
@@ -213,7 +241,7 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(24)
-        .background(isTargeted ? Color.accentColor.opacity(0.12) : Color.clear)
+        .background(isTargeted ? skin.accent.opacity(0.12) : Color.clear)
         .animation(.default, value: isTargeted)
         .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             handleDrop(providers)

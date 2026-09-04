@@ -42,18 +42,30 @@ struct CDriveView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(PlaydockButtonStyle(prominent: false, skinOverride: skin, compact: true))
                 Button {
                     if !currentFolder.isEmpty { model.revealInFinder(currentFolder) }
                 } label: {
                     Label("Open in Finder", systemImage: "arrow.up.forward.app")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(PlaydockButtonStyle(prominent: false, skinOverride: skin, compact: true))
             }
             .padding(16)
+            // "top bar will be the same look... every aspect of the app should be the appearance,"
+            // per live feedback - this row used to sit on the native window background with only
+            // a manually-added accent line standing in for real theming. Now the exact same real
+            // `.topbar` background/border/glow every other themed chrome row in the app uses (see
+            // `PlaydockSkin.topBarBackground`'s own doc comment), not a generic wash.
+            .background(skin.topBarBackground)
             .overlay(alignment: .bottom) {
-                Rectangle().fill(skin.accent.opacity(0.4)).frame(height: skin.borderWidth)
+                if let borderColor = skin.topBarBorderColor {
+                    Rectangle()
+                        .fill(borderColor)
+                        .frame(height: skin.topBarBorderWidth)
+                        .shadow(color: skin.topBarHasGlow ? skin.accent.opacity(0.7) : .clear, radius: 6, y: 2)
+                }
             }
+            .animation(.easeInOut(duration: 0.25), value: skinRaw)
 
             breadcrumb
             Divider()
@@ -106,13 +118,11 @@ struct CDriveView: View {
             guard model.selectedSection == .cDrive, let focusedIndex, entries.indices.contains(focusedIndex) else { return }
             handleActivate(entries[focusedIndex])
         }
-        // "ui looks weird for the bottle browser sometimes. make sure it has the same UI look," per
-        // live feedback - this was plain, fully unstyled system chrome, the one screen in the app
-        // that never picked up the active skin at all. Accent tint + font design only (not a full
-        // `SkinBackground`/pinned color scheme like the game-library layouts use) - a Finder-style
-        // file browser stays on native adaptive backgrounds and genuinely follows system light/dark
-        // on its own, which is the correct, lower-risk way to get "the same look" here without
-        // resurrecting the exact light/dark-vs-fixed-palette bug the grid's cards had.
+        // Accent tint + font design cascade for everything below the header row - the row itself
+        // now carries the real `.topbar` background/border (see above); the List/rows underneath
+        // deliberately stay on native adaptive backgrounds (a Finder-style file browser genuinely
+        // following system light/dark on its own), which is still the correct, lower-risk way to
+        // avoid resurrecting the exact light/dark-vs-fixed-palette bug the grid's cards once had.
         .skinned()
     }
 
