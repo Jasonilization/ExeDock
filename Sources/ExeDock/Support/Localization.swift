@@ -1,0 +1,561 @@
+import SwiftUI
+
+/// Playdock's own small localization layer. This is a SwiftPM executable built with Command Line
+/// Tools only (no Xcode project), and `Package.swift` deliberately `exclude`s the `Resources`
+/// folder from the target - so the usual `.lproj`/`String(localized:)` bundle machinery isn't
+/// wired up and can't be relied on here. Instead every user-facing string is looked up by its
+/// English source text as the key, against an in-memory table per language, falling back to the
+/// key itself (i.e. English) for anything not yet translated. That means a partially-translated
+/// language still renders - it just shows English for the gaps - rather than showing raw keys.
+///
+/// Call sites use the free `L(_:)` function: `Text(L("Settings"))`. A view that needs to re-render
+/// when the language changes reads `@AppStorage(AppLanguage.storageKey)` the same way views
+/// already read `PlaydockSkin.storageKey` for the active skin - `L(_:)` itself just reads
+/// `UserDefaults` directly, so the `@AppStorage` is purely the redraw trigger.
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case system
+    case english = "en"
+    case chineseSimplified = "zh-Hans"
+    case french = "fr"
+    case spanish = "es"
+    case german = "de"
+    case japanese = "ja"
+    case portuguese = "pt"
+
+    var id: String { rawValue }
+
+    static let storageKey = "com.exedock.language"
+
+    /// Each language's name written in that language itself (an endonym), the convention every
+    /// real app's language picker follows - "Deutsch", not "German".
+    var endonym: String {
+        switch self {
+        case .system: return L("System")
+        case .english: return "English"
+        case .chineseSimplified: return "简体中文"
+        case .french: return "Français"
+        case .spanish: return "Español"
+        case .german: return "Deutsch"
+        case .japanese: return "日本語"
+        case .portuguese: return "Português"
+        }
+    }
+
+    /// The English name, shown as a subtitle under the endonym so someone who can't yet read the
+    /// endonym can still find their language.
+    var englishName: String {
+        switch self {
+        case .system: return L("Match your Mac")
+        case .english: return "English"
+        case .chineseSimplified: return "Chinese (Simplified)"
+        case .french: return "French"
+        case .spanish: return "Spanish"
+        case .german: return "German"
+        case .japanese: return "Japanese"
+        case .portuguese: return "Portuguese"
+        }
+    }
+}
+
+/// Look up `key` (its own English text) in the active language's table. Falls back to English,
+/// then to the key itself, so nothing ever renders blank or as a raw identifier.
+func L(_ key: String) -> String {
+    Localization.string(key)
+}
+
+/// `L(_:)` with `String(format:)` applied - `LF("Version %@", "1.2.0")`.
+func LF(_ key: String, _ arguments: CVarArg...) -> String {
+    String(format: Localization.string(key), arguments: arguments)
+}
+
+enum Localization {
+    /// What the user picked, verbatim - `.system` included.
+    static var selected: AppLanguage {
+        AppLanguage(rawValue: UserDefaults.standard.string(forKey: AppLanguage.storageKey) ?? "") ?? .system
+    }
+
+    /// The language actually used to render, resolving `.system` against the Mac's own preferred
+    /// languages - the first one Playdock has a table for, else English.
+    static var active: AppLanguage {
+        let picked = selected
+        guard picked == .system else { return picked }
+        for identifier in Locale.preferredLanguages {
+            let lower = identifier.lowercased()
+            if lower.hasPrefix("zh-hans") || lower == "zh" || lower.hasPrefix("zh-cn") || lower.hasPrefix("zh-sg") {
+                return .chineseSimplified
+            }
+            if let match = AppLanguage.allCases.first(where: { candidate in
+                guard candidate != .system else { return false }
+                return lower == candidate.rawValue.lowercased() || lower.hasPrefix(candidate.rawValue.lowercased() + "-")
+            }) {
+                return match
+            }
+        }
+        return .english
+    }
+
+    static func string(_ key: String) -> String {
+        let language = active
+        if language == .english { return key }
+        return tables[language]?[key] ?? key
+    }
+
+    /// Picks the singular or plural key by `count`, then substitutes it - keeps plural handling
+    /// out of call sites without pulling in a full ICU plural engine (none of the shipping
+    /// languages here need more than a two-form singular/plural split for the one place this is
+    /// used, the game count).
+    static func plural(_ count: Int, singular: String, plural pluralKey: String) -> String {
+        String(format: string(count == 1 ? singular : pluralKey), count)
+    }
+
+    // MARK: - Tables
+
+    /// English is the key set itself - every other table only needs the keys it actually
+    /// translates; anything missing falls through to English automatically.
+    private static let tables: [AppLanguage: [String: String]] = [
+        .chineseSimplified: chineseSimplified,
+        .french: french,
+        .spanish: spanish,
+        .german: german,
+        .japanese: japanese,
+        .portuguese: portuguese,
+    ]
+
+    private static let chineseSimplified: [String: String] = [
+        "System": "系统",
+        "Match your Mac": "跟随系统",
+        "Settings": "设置",
+        "Done": "完成",
+        "Close": "关闭",
+        "Cancel": "取消",
+        "Refresh": "刷新",
+        "Add Game": "添加游戏",
+        "Sort": "排序",
+        "Name": "名称",
+        "Recently Updated": "最近更新",
+        "Search your games": "搜索游戏",
+        "No games installed": "未安装游戏",
+        "%lld game": "%lld 个游戏",
+        "%lld games": "%lld 个游戏",
+        "General": "通用",
+        "Appearance": "外观",
+        "Personalization": "个性化",
+        "Library": "游戏库",
+        "Games & Data": "游戏与数据",
+        "Language": "语言",
+        "Diagnostics": "诊断",
+        "About": "关于",
+        "Advanced Mode": "高级模式",
+        "Adds a settings button to each game so you can fine-tune its engine and graphics settings individually. Most people never need this.": "为每个游戏添加设置按钮，便于单独调整其引擎和图形设置。大多数人无需使用。",
+        "Show Floating Steam Icon": "显示悬浮 Steam 图标",
+        "The double-click-to-open-Steam icon in the corner of the grid. Turn off to collapse it to a small tab on the edge (still there, just out of the way).": "网格角落中双击打开 Steam 的图标。关闭后会收拢为边缘的小标签（仍然可用，只是不碍事）。",
+        "Preview With Sample Games": "使用示例游戏预览",
+        "Adds well-known games (real art and ratings, nothing installed) so you can see how the grid looks. Turn off to remove them.": "添加一些知名游戏（真实封面和评分，并未实际安装），以便查看网格效果。关闭即可移除。",
+        "UI Size": "界面大小",
+        "Look": "风格",
+        "Layout": "布局",
+        "Card Art": "卡片封面",
+        "Banner": "横幅",
+        "Box Art": "竖版封面",
+        "Follows your Mac's light or dark appearance automatically.": "自动跟随系统的浅色或深色外观。",
+        "Run Setup Wizard Again": "重新运行设置向导",
+        "Every control here is drawn in the look you pick, so this screen is a live preview of it.": "此处的每个控件都会以所选风格绘制，因此本页即为其实时预览。",
+        "Default Sort": "默认排序",
+        "Opening Screen": "启动页面",
+        "Steam": "Steam",
+        "C: Drive": "C: 盘",
+        "Which screen Playdock opens to.": "Playdock 启动时打开的页面。",
+        "Hard Refresh Game Info": "强制刷新游戏信息",
+        "Re-downloads every game's art, description, and details from Steam. Use this if a game shows the wrong or missing art.": "从 Steam 重新下载每个游戏的封面、简介和详情。若游戏封面错误或缺失，请使用此功能。",
+        "Refreshing…": "正在刷新…",
+        "Refresh complete.": "刷新完成。",
+        "Last refreshed %@": "上次刷新：%@",
+        "Never refreshed": "从未刷新",
+        "Check for Engine Updates": "检查引擎更新",
+        "Checking…": "正在检查…",
+        "Downloading…": "正在下载…",
+        "Download Update": "下载更新",
+        "Engine": "引擎",
+        "Graphics": "图形",
+        "Sync": "同步",
+        "Wine engine": "Wine 引擎",
+        "These are the same engines already downloaded by Sikarugir Creator.": "这些引擎与 Sikarugir Creator 已下载的引擎相同。",
+        "Fast Sync (ESYNC + MSYNC)": "快速同步（ESYNC + MSYNC）",
+        "Playdock's Wine engine comes from Sikarugir's public releases. Checking never downloads anything by itself.": "Playdock 的 Wine 引擎来自 Sikarugir 的公开发布。检查本身不会下载任何内容。",
+        "Open Logs Folder": "打开日志文件夹",
+        "Open Crash Reports": "打开崩溃报告",
+        "Every launch writes its own log here, plus a record of background checks. If something's not working, look here first.": "每次启动都会在此写入日志，以及后台检查记录。如遇问题，请先查看此处。",
+        "Choose the language Playdock's interface uses.": "选择 Playdock 界面使用的语言。",
+        "Changes apply immediately.": "更改立即生效。",
+        "Some text may stay in English until its translation is finished.": "部分文本在翻译完成前可能仍显示英文。",
+        "Version %@": "版本 %@",
+        "Built on the Sikarugir engine.": "基于 Sikarugir 引擎构建。",
+        "Contact": "联系方式",
+        "A Mac dashboard for the Windows games you run through Wine.": "用于管理通过 Wine 运行的 Windows 游戏的 Mac 面板。",
+    ]
+
+    private static let french: [String: String] = [
+        "System": "Système",
+        "Match your Mac": "Suivre le Mac",
+        "Settings": "Réglages",
+        "Done": "Terminé",
+        "Close": "Fermer",
+        "Cancel": "Annuler",
+        "Refresh": "Actualiser",
+        "Add Game": "Ajouter un jeu",
+        "Sort": "Trier",
+        "Name": "Nom",
+        "Recently Updated": "Récemment mis à jour",
+        "Search your games": "Rechercher un jeu",
+        "No games installed": "Aucun jeu installé",
+        "%lld game": "%lld jeu",
+        "%lld games": "%lld jeux",
+        "General": "Général",
+        "Appearance": "Apparence",
+        "Personalization": "Personnalisation",
+        "Library": "Bibliothèque",
+        "Games & Data": "Jeux et données",
+        "Language": "Langue",
+        "Diagnostics": "Diagnostics",
+        "About": "À propos",
+        "Advanced Mode": "Mode avancé",
+        "Adds a settings button to each game so you can fine-tune its engine and graphics settings individually. Most people never need this.": "Ajoute un bouton de réglages à chaque jeu pour ajuster individuellement son moteur et ses options graphiques. La plupart des gens n'en ont pas besoin.",
+        "Show Floating Steam Icon": "Afficher l'icône Steam flottante",
+        "The double-click-to-open-Steam icon in the corner of the grid. Turn off to collapse it to a small tab on the edge (still there, just out of the way).": "L'icône dans le coin de la grille qui ouvre Steam d'un double-clic. Désactivez-la pour la réduire à un petit onglet sur le bord (toujours là, mais discret).",
+        "Preview With Sample Games": "Aperçu avec des jeux d'exemple",
+        "Adds well-known games (real art and ratings, nothing installed) so you can see how the grid looks. Turn off to remove them.": "Ajoute des jeux connus (vraies jaquettes et notes, rien d'installé) pour voir le rendu de la grille. Désactivez pour les retirer.",
+        "UI Size": "Taille de l'interface",
+        "Look": "Style",
+        "Layout": "Disposition",
+        "Card Art": "Illustration des cartes",
+        "Banner": "Bannière",
+        "Box Art": "Jaquette",
+        "Follows your Mac's light or dark appearance automatically.": "Suit automatiquement l'apparence claire ou sombre de votre Mac.",
+        "Run Setup Wizard Again": "Relancer l'assistant de configuration",
+        "Every control here is drawn in the look you pick, so this screen is a live preview of it.": "Chaque contrôle ici est dessiné dans le style choisi : cet écran en est donc un aperçu en direct.",
+        "Default Sort": "Tri par défaut",
+        "Opening Screen": "Écran d'ouverture",
+        "Steam": "Steam",
+        "C: Drive": "Disque C:",
+        "Which screen Playdock opens to.": "L'écran sur lequel Playdock s'ouvre.",
+        "Hard Refresh Game Info": "Forcer l'actualisation des infos",
+        "Re-downloads every game's art, description, and details from Steam. Use this if a game shows the wrong or missing art.": "Retélécharge depuis Steam la jaquette, la description et les détails de chaque jeu. À utiliser si une jaquette est absente ou erronée.",
+        "Refreshing…": "Actualisation…",
+        "Refresh complete.": "Actualisation terminée.",
+        "Last refreshed %@": "Dernière actualisation : %@",
+        "Never refreshed": "Jamais actualisé",
+        "Check for Engine Updates": "Rechercher des mises à jour du moteur",
+        "Checking…": "Vérification…",
+        "Downloading…": "Téléchargement…",
+        "Download Update": "Télécharger la mise à jour",
+        "Engine": "Moteur",
+        "Graphics": "Graphismes",
+        "Sync": "Synchronisation",
+        "Wine engine": "Moteur Wine",
+        "These are the same engines already downloaded by Sikarugir Creator.": "Ce sont les mêmes moteurs que ceux déjà téléchargés par Sikarugir Creator.",
+        "Fast Sync (ESYNC + MSYNC)": "Synchro rapide (ESYNC + MSYNC)",
+        "Playdock's Wine engine comes from Sikarugir's public releases. Checking never downloads anything by itself.": "Le moteur Wine de Playdock provient des versions publiques de Sikarugir. La vérification ne télécharge rien par elle-même.",
+        "Open Logs Folder": "Ouvrir le dossier des journaux",
+        "Open Crash Reports": "Ouvrir les rapports de plantage",
+        "Every launch writes its own log here, plus a record of background checks. If something's not working, look here first.": "Chaque lancement écrit son journal ici, ainsi qu'un relevé des vérifications en arrière-plan. En cas de problème, commencez par là.",
+        "Choose the language Playdock's interface uses.": "Choisissez la langue de l'interface de Playdock.",
+        "Changes apply immediately.": "Les changements s'appliquent immédiatement.",
+        "Some text may stay in English until its translation is finished.": "Certains textes peuvent rester en anglais tant que leur traduction n'est pas terminée.",
+        "Version %@": "Version %@",
+        "Built on the Sikarugir engine.": "Basé sur le moteur Sikarugir.",
+        "Contact": "Contact",
+        "A Mac dashboard for the Windows games you run through Wine.": "Un tableau de bord Mac pour les jeux Windows lancés via Wine.",
+    ]
+
+    private static let spanish: [String: String] = [
+        "System": "Sistema",
+        "Match your Mac": "Seguir al Mac",
+        "Settings": "Ajustes",
+        "Done": "Listo",
+        "Close": "Cerrar",
+        "Cancel": "Cancelar",
+        "Refresh": "Actualizar",
+        "Add Game": "Añadir juego",
+        "Sort": "Ordenar",
+        "Name": "Nombre",
+        "Recently Updated": "Actualizados recientemente",
+        "Search your games": "Busca tus juegos",
+        "No games installed": "No hay juegos instalados",
+        "%lld game": "%lld juego",
+        "%lld games": "%lld juegos",
+        "General": "General",
+        "Appearance": "Apariencia",
+        "Personalization": "Personalización",
+        "Library": "Biblioteca",
+        "Games & Data": "Juegos y datos",
+        "Language": "Idioma",
+        "Diagnostics": "Diagnóstico",
+        "About": "Acerca de",
+        "Advanced Mode": "Modo avanzado",
+        "Adds a settings button to each game so you can fine-tune its engine and graphics settings individually. Most people never need this.": "Añade un botón de ajustes a cada juego para afinar su motor y sus opciones gráficas por separado. La mayoría de la gente no lo necesita.",
+        "Show Floating Steam Icon": "Mostrar icono flotante de Steam",
+        "The double-click-to-open-Steam icon in the corner of the grid. Turn off to collapse it to a small tab on the edge (still there, just out of the way).": "El icono de la esquina de la cuadrícula que abre Steam con doble clic. Desactívalo para reducirlo a una pestaña pequeña en el borde (sigue ahí, pero sin molestar).",
+        "Preview With Sample Games": "Vista previa con juegos de ejemplo",
+        "Adds well-known games (real art and ratings, nothing installed) so you can see how the grid looks. Turn off to remove them.": "Añade juegos conocidos (carátulas y valoraciones reales, nada instalado) para ver cómo queda la cuadrícula. Desactívalo para quitarlos.",
+        "UI Size": "Tamaño de la interfaz",
+        "Look": "Estilo",
+        "Layout": "Distribución",
+        "Card Art": "Arte de las tarjetas",
+        "Banner": "Banner",
+        "Box Art": "Carátula",
+        "Follows your Mac's light or dark appearance automatically.": "Sigue automáticamente el aspecto claro u oscuro de tu Mac.",
+        "Run Setup Wizard Again": "Volver a ejecutar el asistente",
+        "Every control here is drawn in the look you pick, so this screen is a live preview of it.": "Cada control aquí se dibuja con el estilo que elijas, así que esta pantalla es una vista previa en vivo.",
+        "Default Sort": "Orden predeterminado",
+        "Opening Screen": "Pantalla de inicio",
+        "Steam": "Steam",
+        "C: Drive": "Disco C:",
+        "Which screen Playdock opens to.": "La pantalla con la que se abre Playdock.",
+        "Hard Refresh Game Info": "Recargar la información de los juegos",
+        "Re-downloads every game's art, description, and details from Steam. Use this if a game shows the wrong or missing art.": "Vuelve a descargar de Steam la carátula, la descripción y los detalles de cada juego. Úsalo si un juego muestra una imagen incorrecta o no la muestra.",
+        "Refreshing…": "Actualizando…",
+        "Refresh complete.": "Actualización completada.",
+        "Last refreshed %@": "Última actualización: %@",
+        "Never refreshed": "Sin actualizar nunca",
+        "Check for Engine Updates": "Buscar actualizaciones del motor",
+        "Checking…": "Comprobando…",
+        "Downloading…": "Descargando…",
+        "Download Update": "Descargar actualización",
+        "Engine": "Motor",
+        "Graphics": "Gráficos",
+        "Sync": "Sincronización",
+        "Wine engine": "Motor Wine",
+        "These are the same engines already downloaded by Sikarugir Creator.": "Son los mismos motores que ya descargó Sikarugir Creator.",
+        "Fast Sync (ESYNC + MSYNC)": "Sincronización rápida (ESYNC + MSYNC)",
+        "Playdock's Wine engine comes from Sikarugir's public releases. Checking never downloads anything by itself.": "El motor Wine de Playdock proviene de las versiones públicas de Sikarugir. Comprobar no descarga nada por sí solo.",
+        "Open Logs Folder": "Abrir la carpeta de registros",
+        "Open Crash Reports": "Abrir los informes de fallos",
+        "Every launch writes its own log here, plus a record of background checks. If something's not working, look here first.": "Cada arranque escribe su propio registro aquí, junto con un historial de comprobaciones en segundo plano. Si algo falla, mira aquí primero.",
+        "Choose the language Playdock's interface uses.": "Elige el idioma que usa la interfaz de Playdock.",
+        "Changes apply immediately.": "Los cambios se aplican de inmediato.",
+        "Some text may stay in English until its translation is finished.": "Puede que algún texto siga en inglés hasta que se termine su traducción.",
+        "Version %@": "Versión %@",
+        "Built on the Sikarugir engine.": "Basado en el motor Sikarugir.",
+        "Contact": "Contacto",
+        "A Mac dashboard for the Windows games you run through Wine.": "Un panel de Mac para los juegos de Windows que ejecutas con Wine.",
+    ]
+
+    private static let german: [String: String] = [
+        "System": "System",
+        "Match your Mac": "Mac folgen",
+        "Settings": "Einstellungen",
+        "Done": "Fertig",
+        "Close": "Schließen",
+        "Cancel": "Abbrechen",
+        "Refresh": "Aktualisieren",
+        "Add Game": "Spiel hinzufügen",
+        "Sort": "Sortieren",
+        "Name": "Name",
+        "Recently Updated": "Kürzlich aktualisiert",
+        "Search your games": "Spiele durchsuchen",
+        "No games installed": "Keine Spiele installiert",
+        "%lld game": "%lld Spiel",
+        "%lld games": "%lld Spiele",
+        "General": "Allgemein",
+        "Appearance": "Erscheinungsbild",
+        "Personalization": "Personalisierung",
+        "Library": "Bibliothek",
+        "Games & Data": "Spiele & Daten",
+        "Language": "Sprache",
+        "Diagnostics": "Diagnose",
+        "About": "Über",
+        "Advanced Mode": "Erweiterter Modus",
+        "Adds a settings button to each game so you can fine-tune its engine and graphics settings individually. Most people never need this.": "Fügt jedem Spiel eine Einstellungsschaltfläche hinzu, um Engine und Grafik einzeln anzupassen. Die meisten brauchen das nie.",
+        "Show Floating Steam Icon": "Schwebendes Steam-Symbol anzeigen",
+        "The double-click-to-open-Steam icon in the corner of the grid. Turn off to collapse it to a small tab on the edge (still there, just out of the way).": "Das Symbol in der Ecke des Rasters, das Steam per Doppelklick öffnet. Ausschalten, um es zu einem kleinen Reiter am Rand einzuklappen (weiterhin da, nur aus dem Weg).",
+        "Preview With Sample Games": "Vorschau mit Beispielspielen",
+        "Adds well-known games (real art and ratings, nothing installed) so you can see how the grid looks. Turn off to remove them.": "Fügt bekannte Spiele hinzu (echte Bilder und Wertungen, nichts installiert), um das Raster zu beurteilen. Zum Entfernen ausschalten.",
+        "UI Size": "Oberflächengröße",
+        "Look": "Stil",
+        "Layout": "Layout",
+        "Card Art": "Kartenbild",
+        "Banner": "Banner",
+        "Box Art": "Cover",
+        "Follows your Mac's light or dark appearance automatically.": "Folgt automatisch dem hellen oder dunklen Erscheinungsbild deines Macs.",
+        "Run Setup Wizard Again": "Einrichtungsassistent erneut starten",
+        "Every control here is drawn in the look you pick, so this screen is a live preview of it.": "Jedes Bedienelement hier wird im gewählten Stil gezeichnet – dieser Bildschirm ist also eine Live-Vorschau davon.",
+        "Default Sort": "Standardsortierung",
+        "Opening Screen": "Startbildschirm",
+        "Steam": "Steam",
+        "C: Drive": "Laufwerk C:",
+        "Which screen Playdock opens to.": "Der Bildschirm, mit dem Playdock startet.",
+        "Hard Refresh Game Info": "Spielinfos neu laden",
+        "Re-downloads every game's art, description, and details from Steam. Use this if a game shows the wrong or missing art.": "Lädt Bild, Beschreibung und Details jedes Spiels neu von Steam. Nutze das, wenn ein Spiel ein falsches oder fehlendes Bild zeigt.",
+        "Refreshing…": "Wird aktualisiert…",
+        "Refresh complete.": "Aktualisierung abgeschlossen.",
+        "Last refreshed %@": "Zuletzt aktualisiert: %@",
+        "Never refreshed": "Nie aktualisiert",
+        "Check for Engine Updates": "Nach Engine-Updates suchen",
+        "Checking…": "Wird geprüft…",
+        "Downloading…": "Wird geladen…",
+        "Download Update": "Update herunterladen",
+        "Engine": "Engine",
+        "Graphics": "Grafik",
+        "Sync": "Synchronisierung",
+        "Wine engine": "Wine-Engine",
+        "These are the same engines already downloaded by Sikarugir Creator.": "Das sind dieselben Engines, die Sikarugir Creator bereits heruntergeladen hat.",
+        "Fast Sync (ESYNC + MSYNC)": "Schnelle Synchronisierung (ESYNC + MSYNC)",
+        "Playdock's Wine engine comes from Sikarugir's public releases. Checking never downloads anything by itself.": "Playdocks Wine-Engine stammt aus den öffentlichen Releases von Sikarugir. Das Prüfen lädt von selbst nichts herunter.",
+        "Open Logs Folder": "Protokollordner öffnen",
+        "Open Crash Reports": "Absturzberichte öffnen",
+        "Every launch writes its own log here, plus a record of background checks. If something's not working, look here first.": "Jeder Start schreibt hier sein eigenes Protokoll, dazu einen Verlauf der Hintergrundprüfungen. Wenn etwas nicht geht, schau zuerst hier.",
+        "Choose the language Playdock's interface uses.": "Wähle die Sprache der Playdock-Oberfläche.",
+        "Changes apply immediately.": "Änderungen gelten sofort.",
+        "Some text may stay in English until its translation is finished.": "Manche Texte bleiben englisch, bis ihre Übersetzung fertig ist.",
+        "Version %@": "Version %@",
+        "Built on the Sikarugir engine.": "Basiert auf der Sikarugir-Engine.",
+        "Contact": "Kontakt",
+        "A Mac dashboard for the Windows games you run through Wine.": "Ein Mac-Dashboard für die Windows-Spiele, die du über Wine spielst.",
+    ]
+
+    private static let japanese: [String: String] = [
+        "System": "システム",
+        "Match your Mac": "Mac に合わせる",
+        "Settings": "設定",
+        "Done": "完了",
+        "Close": "閉じる",
+        "Cancel": "キャンセル",
+        "Refresh": "更新",
+        "Add Game": "ゲームを追加",
+        "Sort": "並び替え",
+        "Name": "名前",
+        "Recently Updated": "最近更新",
+        "Search your games": "ゲームを検索",
+        "No games installed": "インストール済みのゲームがありません",
+        "%lld game": "%lld 本のゲーム",
+        "%lld games": "%lld 本のゲーム",
+        "General": "一般",
+        "Appearance": "外観",
+        "Personalization": "パーソナライズ",
+        "Library": "ライブラリ",
+        "Games & Data": "ゲームとデータ",
+        "Language": "言語",
+        "Diagnostics": "診断",
+        "About": "情報",
+        "Advanced Mode": "詳細モード",
+        "Adds a settings button to each game so you can fine-tune its engine and graphics settings individually. Most people never need this.": "各ゲームに設定ボタンを追加し、エンジンとグラフィックを個別に調整できるようにします。ほとんどの場合は不要です。",
+        "Show Floating Steam Icon": "フローティング Steam アイコンを表示",
+        "The double-click-to-open-Steam icon in the corner of the grid. Turn off to collapse it to a small tab on the edge (still there, just out of the way).": "グリッドの隅にある、ダブルクリックで Steam を開くアイコンです。オフにすると端の小さなタブに畳まれます（消えるわけではなく、邪魔にならなくなります）。",
+        "Preview With Sample Games": "サンプルゲームでプレビュー",
+        "Adds well-known games (real art and ratings, nothing installed) so you can see how the grid looks. Turn off to remove them.": "有名なゲーム（実際のアートと評価。実際のインストールはなし）を追加し、グリッドの見え方を確認できます。オフにすると削除されます。",
+        "UI Size": "UI サイズ",
+        "Look": "スタイル",
+        "Layout": "レイアウト",
+        "Card Art": "カードアート",
+        "Banner": "バナー",
+        "Box Art": "ボックスアート",
+        "Follows your Mac's light or dark appearance automatically.": "Mac のライト/ダーク外観に自動的に従います。",
+        "Run Setup Wizard Again": "セットアップウィザードを再実行",
+        "Every control here is drawn in the look you pick, so this screen is a live preview of it.": "ここのすべてのコントロールは選んだスタイルで描画されるため、この画面がそのライブプレビューになります。",
+        "Default Sort": "デフォルトの並び順",
+        "Opening Screen": "起動画面",
+        "Steam": "Steam",
+        "C: Drive": "C: ドライブ",
+        "Which screen Playdock opens to.": "Playdock を開いたときに表示する画面です。",
+        "Hard Refresh Game Info": "ゲーム情報を強制的に更新",
+        "Re-downloads every game's art, description, and details from Steam. Use this if a game shows the wrong or missing art.": "各ゲームのアート、説明、詳細を Steam から再ダウンロードします。アートが誤っている、または表示されない場合に使用します。",
+        "Refreshing…": "更新中…",
+        "Refresh complete.": "更新が完了しました。",
+        "Last refreshed %@": "前回の更新：%@",
+        "Never refreshed": "未更新",
+        "Check for Engine Updates": "エンジンの更新を確認",
+        "Checking…": "確認中…",
+        "Downloading…": "ダウンロード中…",
+        "Download Update": "更新をダウンロード",
+        "Engine": "エンジン",
+        "Graphics": "グラフィック",
+        "Sync": "同期",
+        "Wine engine": "Wine エンジン",
+        "These are the same engines already downloaded by Sikarugir Creator.": "これらは Sikarugir Creator がすでにダウンロードしたエンジンと同じものです。",
+        "Fast Sync (ESYNC + MSYNC)": "高速同期（ESYNC + MSYNC）",
+        "Playdock's Wine engine comes from Sikarugir's public releases. Checking never downloads anything by itself.": "Playdock の Wine エンジンは Sikarugir の公開リリースから取得されます。確認するだけでは何もダウンロードされません。",
+        "Open Logs Folder": "ログフォルダを開く",
+        "Open Crash Reports": "クラッシュレポートを開く",
+        "Every launch writes its own log here, plus a record of background checks. If something's not working, look here first.": "起動のたびにここへログが書き込まれ、バックグラウンド確認の記録も残ります。うまく動かないときはまずここを確認してください。",
+        "Choose the language Playdock's interface uses.": "Playdock のインターフェースで使う言語を選択します。",
+        "Changes apply immediately.": "変更はすぐに反映されます。",
+        "Some text may stay in English until its translation is finished.": "翻訳が完了するまで、一部のテキストは英語のまま表示されることがあります。",
+        "Version %@": "バージョン %@",
+        "Built on the Sikarugir engine.": "Sikarugir エンジンを基に構築されています。",
+        "Contact": "連絡先",
+        "A Mac dashboard for the Windows games you run through Wine.": "Wine で動かす Windows ゲームのための Mac 向けダッシュボードです。",
+    ]
+
+    private static let portuguese: [String: String] = [
+        "System": "Sistema",
+        "Match your Mac": "Acompanhar o Mac",
+        "Settings": "Ajustes",
+        "Done": "Concluído",
+        "Close": "Fechar",
+        "Cancel": "Cancelar",
+        "Refresh": "Atualizar",
+        "Add Game": "Adicionar jogo",
+        "Sort": "Ordenar",
+        "Name": "Nome",
+        "Recently Updated": "Atualizados recentemente",
+        "Search your games": "Buscar seus jogos",
+        "No games installed": "Nenhum jogo instalado",
+        "%lld game": "%lld jogo",
+        "%lld games": "%lld jogos",
+        "General": "Geral",
+        "Appearance": "Aparência",
+        "Personalization": "Personalização",
+        "Library": "Biblioteca",
+        "Games & Data": "Jogos e dados",
+        "Language": "Idioma",
+        "Diagnostics": "Diagnóstico",
+        "About": "Sobre",
+        "Advanced Mode": "Modo avançado",
+        "Adds a settings button to each game so you can fine-tune its engine and graphics settings individually. Most people never need this.": "Adiciona um botão de ajustes a cada jogo para ajustar o motor e os gráficos individualmente. A maioria das pessoas nunca precisa disso.",
+        "Show Floating Steam Icon": "Mostrar ícone flutuante da Steam",
+        "The double-click-to-open-Steam icon in the corner of the grid. Turn off to collapse it to a small tab on the edge (still there, just out of the way).": "O ícone no canto da grade que abre a Steam com um clique duplo. Desative para recolhê-lo em uma pequena aba na borda (continua lá, apenas fora do caminho).",
+        "Preview With Sample Games": "Pré-visualizar com jogos de exemplo",
+        "Adds well-known games (real art and ratings, nothing installed) so you can see how the grid looks. Turn off to remove them.": "Adiciona jogos conhecidos (arte e notas reais, nada instalado) para ver como a grade fica. Desative para removê-los.",
+        "UI Size": "Tamanho da interface",
+        "Look": "Estilo",
+        "Layout": "Disposição",
+        "Card Art": "Arte dos cartões",
+        "Banner": "Banner",
+        "Box Art": "Capa",
+        "Follows your Mac's light or dark appearance automatically.": "Acompanha automaticamente a aparência clara ou escura do seu Mac.",
+        "Run Setup Wizard Again": "Executar o assistente novamente",
+        "Every control here is drawn in the look you pick, so this screen is a live preview of it.": "Cada controle aqui é desenhado no estilo escolhido, então esta tela é uma prévia ao vivo dele.",
+        "Default Sort": "Ordenação padrão",
+        "Opening Screen": "Tela inicial",
+        "Steam": "Steam",
+        "C: Drive": "Disco C:",
+        "Which screen Playdock opens to.": "A tela com que o Playdock abre.",
+        "Hard Refresh Game Info": "Recarregar informações dos jogos",
+        "Re-downloads every game's art, description, and details from Steam. Use this if a game shows the wrong or missing art.": "Rebaixa da Steam a arte, a descrição e os detalhes de cada jogo. Use isto se um jogo mostrar arte errada ou ausente.",
+        "Refreshing…": "Atualizando…",
+        "Refresh complete.": "Atualização concluída.",
+        "Last refreshed %@": "Última atualização: %@",
+        "Never refreshed": "Nunca atualizado",
+        "Check for Engine Updates": "Procurar atualizações do motor",
+        "Checking…": "Verificando…",
+        "Downloading…": "Baixando…",
+        "Download Update": "Baixar atualização",
+        "Engine": "Motor",
+        "Graphics": "Gráficos",
+        "Sync": "Sincronização",
+        "Wine engine": "Motor Wine",
+        "These are the same engines already downloaded by Sikarugir Creator.": "São os mesmos motores que o Sikarugir Creator já baixou.",
+        "Fast Sync (ESYNC + MSYNC)": "Sincronização rápida (ESYNC + MSYNC)",
+        "Playdock's Wine engine comes from Sikarugir's public releases. Checking never downloads anything by itself.": "O motor Wine do Playdock vem das versões públicas do Sikarugir. Verificar não baixa nada por conta própria.",
+        "Open Logs Folder": "Abrir a pasta de registros",
+        "Open Crash Reports": "Abrir os relatórios de falha",
+        "Every launch writes its own log here, plus a record of background checks. If something's not working, look here first.": "Cada início grava seu próprio registro aqui, além de um histórico de verificações em segundo plano. Se algo não funcionar, olhe aqui primeiro.",
+        "Choose the language Playdock's interface uses.": "Escolha o idioma usado pela interface do Playdock.",
+        "Changes apply immediately.": "As alterações são aplicadas imediatamente.",
+        "Some text may stay in English until its translation is finished.": "Alguns textos podem permanecer em inglês até a tradução ser concluída.",
+        "Version %@": "Versão %@",
+        "Built on the Sikarugir engine.": "Construído sobre o motor Sikarugir.",
+        "Contact": "Contato",
+        "A Mac dashboard for the Windows games you run through Wine.": "Um painel de Mac para os jogos de Windows que você roda pelo Wine.",
+    ]
+}

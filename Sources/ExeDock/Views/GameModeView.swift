@@ -39,6 +39,14 @@ private struct LeftRoundedRect: Shape {
     }
 }
 
+/// Storage key for the floating Settings launcher's shown/minimized state - namespaced here rather
+/// than on `GameModeView` (which owns the launcher view) so `SettingsPanelView`'s own
+/// "Show Floating Settings Button" toggle can bind the same `@AppStorage` without importing the
+/// whole dashboard view.
+enum SettingsLauncher {
+    static let showLauncherKey = "com.exedock.showSettingsButton"
+}
+
 struct GameModeView: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var runningTracker = RunningGameTracker.shared
@@ -55,8 +63,12 @@ struct GameModeView: View {
     /// the visual one.
     static let showSteamIconKey = "com.exedock.showSteamIcon"
     @AppStorage(GameModeView.showSteamIconKey) private var showSteamIcon = true
+    /// The floating Settings launcher's shown/minimized state - `true` is the full pill, `false`
+    /// collapses it to an edge tab, exactly the way `showSteamIcon` works for the Steam icon.
+    @AppStorage(SettingsLauncher.showLauncherKey) private var showSettingsLauncher = true
     @LocalState private var search = ""
-    @LocalState private var showingSettingsSheet = false
+    /// Drives the full-window `SettingsPanelView` overlay (it used to be a small `.sheet`).
+    @LocalState private var showingSettings = false
     @LocalState private var showingAddGameSheet = false
     @LocalState private var sortOption: GameSortOption = .name
     @LocalState private var launchOverlayGame: SteamGame?
@@ -329,18 +341,10 @@ struct GameModeView: View {
             .padding(.bottom, isDashboardTheActiveControllerLayer && controllerObserver.isConnected ? Self.legendBarHeight : 0)
             .animation(.easeInOut(duration: 0.2), value: controllerObserver.isConnected)
 
-            // "minimalizing steam launcher just makes it disappear... should be on the edge but
-            // still expandable... should look good too," then "it disappears for a second...
-            // should be smooth, like when you minimize your window on macOS" - steamFloatingIcon
-            // now owns both its expanded and collapsed states as one continuous view (see its own
-            // doc comment), rather than this call site swapping between two separate ones.
-            steamFloatingIcon
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .allowsHitTesting(
-                    detailGame == nil && detailCustomGame == nil && launchOverlayGame == nil
-                        && launchOverlayCustomGame == nil && !showingControllerMode
-                )
-            .animation(.easeInOut(duration: 0.3), value: showSteamIcon)
+            // The two bottom-right floating controls - the Steam icon and (stacked just above it)
+            // the Settings launcher - kept in their own nested container so this outer ZStack
+            // doesn't grow past what Swift's type-checker will solve in one pass.
+            cornerFloaters
 
             if isDashboardTheActiveControllerLayer {
                 ControllerLegendBar(hints: dashboardControllerHints)
@@ -392,6 +396,8 @@ struct GameModeView: View {
                 .transition(.opacity)
                 .zIndex(2)
             }
+
+            settingsOverlay
         }
         .animation(.easeInOut(duration: 0.2), value: model.launchingTarget)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: launchOverlayGame?.appID)
@@ -407,9 +413,9 @@ struct GameModeView: View {
         // feedback - every skin's `SkinBackground` and card border/shadow logic is genuinely
         // light/dark-aware on its own now (see `SkinBackground.swift`), so the dashboard just
         // follows the Mac's real current appearance like everything else in the app already does.
-        .sheet(isPresented: $showingSettingsSheet) {
-            DefaultSettingsSheet(isAdvancedMode: $isAdvancedMode)
-        }
+        // Settings is no longer a small `.sheet` - it's the full-window `SettingsPanelView`
+        // overlay added inside the ZStack above, opened from the floating launcher or the header
+        // gear.
         .sheet(isPresented: $showingAddGameSheet) {
             AddGameSheet()
         }
@@ -491,8 +497,8 @@ struct GameModeView: View {
     private var header: some View {
         HStack(spacing: 10) {
             profileAvatar
-            SkinTitleText(text: model.steamProfile?.personaName ?? "Steam", size: 17, lineLimit: 1)
-            Text(model.steamGames.isEmpty ? "No games installed" : "\(model.steamGames.count) game\(model.steamGames.count == 1 ? "" : "s")")
+            SkinTitleText(text: model.steamProfile?.personaName ?? L("Steam"), size: 17, lineLimit: 1)
+            Text(model.steamGames.isEmpty ? L("No games installed") : Localization.plural(model.steamGames.count, singular: "%lld game", plural: "%lld games"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -506,20 +512,20 @@ struct GameModeView: View {
             // ordering, not just Grid's.
             HStack(spacing: 6) {
                 sortMenu
-                headerIconButton(systemImage: "plus", help: "Add Game", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(0)) {
+                headerIconButton(systemImage: "plus", help: L("Add Game"), isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(0)) {
                     showingAddGameSheet = true
                 }
                 .keyboardShortcut("n", modifiers: .command)
 
-                headerIconButton(systemImage: "arrow.clockwise", help: "Refresh", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(1)) {
+                headerIconButton(systemImage: "arrow.clockwise", help: L("Refresh"), isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(1)) {
                     model.refreshSteamGames()
                     model.refreshSteamProfile()
                 }
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(model.isLoadingSteamGames)
 
-                headerIconButton(systemImage: "gearshape", help: "Settings", isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(2)) {
-                    showingSettingsSheet = true
+                headerIconButton(systemImage: "gearshape", help: L("Settings"), isFocused: controllerObserver.isConnected && focusedTarget == .toolbar(2)) {
+                    openSettings()
                 }
             }
             .padding(.horizontal, 8)
@@ -560,9 +566,9 @@ struct GameModeView: View {
                     sortOption = option
                 } label: {
                     if option == sortOption {
-                        Label(option.rawValue, systemImage: "checkmark")
+                        Label(L(option.rawValue), systemImage: "checkmark")
                     } else {
-                        Text(option.rawValue)
+                        Text(L(option.rawValue))
                     }
                 }
             }
@@ -570,7 +576,7 @@ struct GameModeView: View {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.up.arrow.down")
                     .font(.caption.weight(.semibold))
-                Text(sortOption.rawValue)
+                Text(L(sortOption.rawValue))
                     .font(.callout.weight(.medium))
                 Image(systemName: "chevron.down")
                     .font(.caption2.weight(.bold))
@@ -737,6 +743,116 @@ struct GameModeView: View {
         }
     }
 
+    // MARK: - Floating corner controls
+
+    /// Neither floating control should take clicks while any full-screen overlay (a game's detail
+    /// view, a launch overlay, Controller Mode) is up over the dashboard.
+    private var noDashboardOverlayActive: Bool {
+        detailGame == nil && detailCustomGame == nil && launchOverlayGame == nil
+            && launchOverlayCustomGame == nil && !showingControllerMode
+    }
+
+    /// The Steam icon and the Settings launcher, both docked bottom-right, kept in their own
+    /// container so the main `body` ZStack stays inside the Swift type-checker's budget.
+    private var cornerFloaters: some View {
+        ZStack(alignment: .bottomTrailing) {
+            steamFloatingIcon
+                .allowsHitTesting(noDashboardOverlayActive)
+            settingsFloatingLauncher
+                .allowsHitTesting(noDashboardOverlayActive && !showingSettings)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        .animation(.easeInOut(duration: 0.3), value: showSteamIcon)
+        .animation(.easeInOut(duration: 0.3), value: showSettingsLauncher)
+    }
+
+    @ViewBuilder
+    private var settingsOverlay: some View {
+        if showingSettings {
+            SettingsPanelView {
+                withAnimation(.easeInOut(duration: 0.25)) { showingSettings = false }
+            }
+            .transition(.opacity)
+            .zIndex(3)
+        }
+    }
+
+    private func openSettings() {
+        withAnimation(.easeInOut(duration: 0.25)) { showingSettings = true }
+    }
+
+    /// A floating Settings launcher that mirrors `steamFloatingIcon`: one continuous view that is
+    /// either a full pill (gear + "Settings") or, minimized, a small tab docked flush to the
+    /// window's right edge - "a button that can be minimalized, just like the launch steam icon,"
+    /// per live feedback. Tapping the pill opens the full-window `SettingsPanelView`; the chevron
+    /// tucks it to the edge; the edge tab brings it back. Sits above the Steam icon so the two
+    /// stack in the same corner without overlapping, in whichever state each one is in.
+    private var settingsFloatingLauncher: some View {
+        let collapsed = !showSettingsLauncher
+        let width: CGFloat = collapsed ? 30 : 148
+        let height: CGFloat = collapsed ? 92 : 46
+        // Clear the Steam icon whatever state it's in: expanded it's a 200pt icon 24pt off the
+        // bottom, collapsed a 116pt edge tab starting 40pt up. Sit just above either.
+        let bottomInset: CGFloat = showSteamIcon ? (24 + 200 + 14) : (40 + 116 + 12)
+        let shape: AnyShape = collapsed ? AnyShape(LeftRoundedRect(radius: 14)) : AnyShape(Capsule())
+
+        return ZStack(alignment: .topLeading) {
+            Button {
+                openSettings()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "gearshape.fill")
+                    Text(L("Settings")).fontWeight(.semibold).lineLimit(1)
+                }
+                .font(.callout)
+                .foregroundStyle(skin.accent)
+                .frame(width: width, height: height)
+            }
+            .buttonStyle(.plain)
+            .opacity(collapsed ? 0 : 1)
+            .allowsHitTesting(!collapsed)
+            .help(L("Settings"))
+
+            if !collapsed {
+                Button {
+                    showSettingsLauncher = false
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(skin.accent)
+                        .frame(width: 17, height: 17)
+                        .background(skin.accent.opacity(0.16), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(4)
+                .help(L("Show Floating Settings Button"))
+            }
+
+            Button {
+                showSettingsLauncher = true
+            } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "chevron.left").font(.system(size: 9, weight: .bold))
+                    Image(systemName: "gearshape.fill").font(.body)
+                }
+                .foregroundStyle(skin.accent)
+                .frame(width: width, height: height)
+            }
+            .buttonStyle(.plain)
+            .opacity(collapsed ? 1 : 0)
+            .allowsHitTesting(collapsed)
+            .help(L("Settings"))
+        }
+        .frame(width: width, height: height)
+        .background(.regularMaterial, in: shape)
+        .overlay(shape.stroke(skin.accent.opacity(0.35), lineWidth: skin.borderWidth))
+        .clipShape(shape)
+        .shadow(color: .black.opacity(0.28), radius: collapsed ? 10 : 16, x: collapsed ? -2 : 0, y: collapsed ? 0 : 6)
+        .padding(.trailing, collapsed ? 0 : 22)
+        .padding(.bottom, bottomInset)
+        .animation(.easeInOut(duration: 0.3), value: showSettingsLauncher)
+    }
+
     private var profileAvatar: some View {
         Group {
             if let avatarPath = model.steamProfile?.avatarPath, let image = LocalImageCache.image(atPath: avatarPath) {
@@ -756,7 +872,7 @@ struct GameModeView: View {
         HStack(spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search your games", text: $search)
+                TextField(L("Search your games"), text: $search)
                     .textFieldStyle(.plain)
                     .font(.title3)
                 if !search.isEmpty {
@@ -777,9 +893,9 @@ struct GameModeView: View {
                     .strokeBorder(Color.primary.opacity(0.06))
             )
 
-            Picker("Sort", selection: $sortOption) {
+            Picker(L("Sort"), selection: $sortOption) {
                 ForEach(GameSortOption.allCases) { option in
-                    Text(option.rawValue).tag(option)
+                    Text(L(option.rawValue)).tag(option)
                 }
             }
             .frame(maxWidth: 220)
@@ -847,7 +963,7 @@ struct GameModeView: View {
     /// carousel) - both of those own the same D-pad/A stream the instant they're shown, per
     /// `ControllerObserver`'s "single owner, self-filtering subscribers" design.
     private var isDashboardTheActiveControllerLayer: Bool {
-        detailGame == nil && detailCustomGame == nil && !showingControllerMode
+        detailGame == nil && detailCustomGame == nil && !showingControllerMode && !showingSettings
     }
 
     /// `focusedTarget`'s own `.card` index, for `SkinWebGridView`'s `focusedIndex` - `nil` for
@@ -931,7 +1047,7 @@ struct GameModeView: View {
             model.refreshSteamGames()
             model.refreshSteamProfile()
         case .toolbar:
-            showingSettingsSheet = true
+            openSettings()
         case .card(let index):
             guard libraryEntries.indices.contains(index) else { return }
             switch libraryEntries[index] {
@@ -1036,9 +1152,9 @@ struct GameModeView: View {
             Image(systemName: "square.grid.2x2")
                 .font(.system(size: 36))
                 .foregroundStyle(.tertiary)
-            Text("No games installed yet")
+            Text(L("No games installed yet"))
                 .font(.title3).bold()
-            Text("Install something from the Steam store, or use \u{201C}+\u{201D} above to add a game you already have.")
+            Text(L("Install something from the Steam store, or use \u{201C}+\u{201D} above to add a game you already have."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -1826,259 +1942,7 @@ struct GameSettingsFields: View {
     }
 }
 
-/// "Check for Engine Updates" - queries the real `Sikarugir-App/Engines` GitHub release
-/// (`SikarugirEnginesRemote`) for the currently-recommended build and compares it against what's
-/// already downloaded. Checking is free/instant; the actual (potentially ~160MB) download only
-/// happens on an explicit tap.
-private struct EngineUpdateSection: View {
-    @LocalState private var isChecking = false
-    @LocalState private var isDownloading = false
-    @LocalState private var updateAvailable: RemoteEngineAsset?
-    @LocalState private var statusText: String?
-
-    var body: some View {
-        Section {
-            if let updateAvailable {
-                Text("A newer engine is available: \(updateAvailable.name)")
-                    .font(.callout)
-                Button {
-                    downloadUpdate(updateAvailable)
-                } label: {
-                    if isDownloading {
-                        HStack(spacing: 6) {
-                            ProgressView().controlSize(.small)
-                            Text("Downloading…")
-                        }
-                    } else {
-                        Text("Download Update")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isDownloading)
-            } else {
-                Button {
-                    checkForUpdates()
-                } label: {
-                    if isChecking {
-                        HStack(spacing: 6) {
-                            ProgressView().controlSize(.small)
-                            Text("Checking…")
-                        }
-                    } else {
-                        Label("Check for Engine Updates", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                }
-                .disabled(isChecking)
-            }
-            if let statusText {
-                Text(statusText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } header: {
-            Text("Engine")
-        } footer: {
-            Text("Playdock's Wine engine comes from Sikarugir's public releases. Checking never downloads anything by itself.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private func checkForUpdates() {
-        isChecking = true
-        statusText = nil
-        Task {
-            do {
-                let assets = try await SikarugirEnginesRemote.fetchAvailableAssets()
-                guard let recommended = SikarugirEnginesRemote.recommendedAsset(among: assets) else {
-                    isChecking = false
-                    statusText = "No engines found."
-                    return
-                }
-                let alreadyHave = Set(SikarugirEngine.availableEngineNames()).contains(recommended.name)
-                isChecking = false
-                if alreadyHave {
-                    statusText = "You already have the latest recommended engine (\(recommended.name))."
-                } else {
-                    updateAvailable = recommended
-                }
-            } catch {
-                isChecking = false
-                statusText = error.localizedDescription
-            }
-        }
-    }
-
-    private func downloadUpdate(_ asset: RemoteEngineAsset) {
-        isDownloading = true
-        Task {
-            do {
-                try await SikarugirEnginesRemote.download(asset) { message in
-                    Task { @MainActor in statusText = message }
-                }
-                isDownloading = false
-                updateAvailable = nil
-                statusText = "Downloaded \(asset.name) - pick it in Advanced Mode's engine list, or it'll be offered next time a bottle needs (re)initializing."
-            } catch {
-                isDownloading = false
-                statusText = error.localizedDescription
-            }
-        }
-    }
-}
-
-/// The top-level rows in `DefaultSettingsSheet` that a controller can navigate directly - the two
-/// toggles, the two diagnostics buttons, and Done. `GameSettingsFields`/`EngineUpdateSection`'s own
-/// nested controls (sliders, pickers) aren't part of this focus loop yet - a smaller follow-up,
-/// same as the header/search/sort scope boundary on the main dashboard.
-private enum SettingsRow: Int, CaseIterable {
-    case advancedMode, showSteamIcon, sampleGames, openLogs, openCrashReports, done
-}
-
-private struct DefaultSettingsSheet: View {
-    @EnvironmentObject private var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var controllerObserver = ControllerObserver.shared
-    @Binding var isAdvancedMode: Bool
-    @LocalState private var focusedRow: SettingsRow?
-    @LocalState private var showingWizard = false
-    @AppStorage(LibraryLayoutStyle.storageKey) private var libraryLayoutRaw = LibraryLayoutStyle.grid.rawValue
-    @AppStorage(PlaydockSkin.storageKey) private var skinRaw = PlaydockSkin.luxury.rawValue
-    @AppStorage(PlaydockArtSource.storageKey) private var artSourceRaw = PlaydockArtSource.banner.rawValue
-    @AppStorage(GameModeView.showSteamIconKey) private var showSteamIcon = true
-
-    private func isFocused(_ row: SettingsRow) -> Bool {
-        controllerObserver.isConnected && focusedRow == row
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Game Mode Settings").font(.title3).bold()
-                Spacer()
-                Button("Done") { dismiss() }
-                    .buttonStyle(.borderedProminent)
-                    .focusRing(isFocused(.done))
-            }
-            .padding(16)
-            Divider()
-
-            Form {
-                Section {
-                    Toggle("Advanced Mode", isOn: $isAdvancedMode)
-                        .focusRing(isFocused(.advancedMode))
-                } footer: {
-                    Text("Adds a settings button to each game so you can fine-tune its engine and graphics settings individually. Most people never need this.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section {
-                    Toggle("Show Floating Steam Icon", isOn: $showSteamIcon)
-                        .focusRing(isFocused(.showSteamIcon))
-                } footer: {
-                    Text("The double-click-to-open-Steam icon in the corner of the grid. Turn off to collapse it to a small tab on the edge (still there, just out of the way) - the icon itself has the same control.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section {
-                    Picker("Layout", selection: $libraryLayoutRaw) {
-                        ForEach(LibraryLayoutStyle.allCases) { style in
-                            Text(style.displayName).tag(style.rawValue)
-                        }
-                    }
-                    Picker("Appearance", selection: $skinRaw) {
-                        ForEach(PlaydockSkin.allCases) { skin in
-                            Text(skin.displayName).tag(skin.rawValue)
-                        }
-                    }
-                    Picker("Card Art", selection: $artSourceRaw) {
-                        ForEach(PlaydockArtSource.allCases) { source in
-                            Text(source.displayName).tag(source.rawValue)
-                        }
-                    }
-                } header: {
-                    Text("Library Look")
-                } footer: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text((LibraryLayoutStyle(rawValue: libraryLayoutRaw) ?? .grid).subtitle + " · " + (PlaydockArtSource(rawValue: artSourceRaw) ?? .banner).subtitle)
-                        Button("Run Setup Wizard Again") { showingWizard = true }
-                            .buttonStyle(.link)
-                            .font(.caption)
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-                .sheet(isPresented: $showingWizard) {
-                    SetupWizardView()
-                }
-
-                if isAdvancedMode {
-                    GameSettingsFields(config: $model.gameModeConfig)
-                }
-
-                EngineUpdateSection()
-
-                Section {
-                    Toggle("Preview With Sample Games", isOn: Binding(
-                        get: { model.isPreviewingSampleGames },
-                        set: { _ in model.togglePreviewSampleGames() }
-                    ))
-                    .focusRing(isFocused(.sampleGames))
-                } footer: {
-                    Text("Adds 11 well-known games (real art/ratings, nothing actually installed) so you can see how the grid looks at different sizes. Turn off to remove them - they're never saved.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section {
-                    Button {
-                        model.revealInFinder(ExeRunner.logsDir)
-                    } label: {
-                        Label("Open Logs Folder", systemImage: "doc.text.magnifyingglass")
-                    }
-                    .focusRing(isFocused(.openLogs))
-                    Button {
-                        model.revealInFinder(("~/Library/Logs/DiagnosticReports" as NSString).expandingTildeInPath)
-                    } label: {
-                        Label("Open Crash Reports", systemImage: "exclamationmark.triangle")
-                    }
-                    .focusRing(isFocused(.openCrashReports))
-                } header: {
-                    Text("Diagnostics")
-                } footer: {
-                    Text("Every launch writes its own wine log here, plus a running record of background checks (like fetching a game's store art). If something's not working, this is the first place to look.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .onChange(of: controllerObserver.directionPress?.token) { _ in
-                guard let direction = controllerObserver.directionPress?.direction, direction == .up || direction == .down else { return }
-                let all = SettingsRow.allCases
-                guard let current = focusedRow, let index = all.firstIndex(of: current) else {
-                    focusedRow = all.first
-                    return
-                }
-                focusedRow = all[safe: direction == .up ? index - 1 : index + 1] ?? current
-            }
-            .onChange(of: controllerObserver.primaryPress) { _ in
-                switch focusedRow {
-                case .advancedMode: isAdvancedMode.toggle()
-                case .showSteamIcon: showSteamIcon.toggle()
-                case .sampleGames: model.togglePreviewSampleGames()
-                case .openLogs: model.revealInFinder(ExeRunner.logsDir)
-                case .openCrashReports: model.revealInFinder(("~/Library/Logs/DiagnosticReports" as NSString).expandingTildeInPath)
-                case .done: dismiss()
-                case nil: break
-                }
-            }
-            .formStyle(.grouped)
-        }
-        .frame(width: 420, height: isAdvancedMode ? 710 : 490)
-        .animation(.easeInOut(duration: 0.2), value: isAdvancedMode)
-    }
-}
+// MARK: - Per-game settings popover
 
 private struct GameSettingsPopover: View {
     @EnvironmentObject private var model: AppModel

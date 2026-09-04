@@ -127,6 +127,42 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Hard refresh of downloadable game info
+
+    /// True only while `hardRefreshGameInfo()` is doing its cache wipe - drives the Settings
+    /// button's spinner and keeps a second tap from stacking.
+    @Published private(set) var isHardRefreshingGameInfo = false
+
+    /// Bumped every time a hard refresh finishes. Views that cache a game's resolved art/
+    /// description in their own `@State` (keyed on the entry id, which a plain `refreshSteamGames()`
+    /// never invalidates) watch this and re-resolve from scratch when it changes.
+    @Published private(set) var gameInfoGeneration = 0
+
+    private static let lastHardRefreshKey = "com.exedock.lastGameInfoRefresh"
+
+    /// When "Hard Refresh Game Info" was last run, or `nil` if never - shown in Settings so the
+    /// action doesn't feel like it did nothing.
+    var lastGameInfoRefresh: Date? {
+        let stamp = UserDefaults.standard.double(forKey: Self.lastHardRefreshKey)
+        return stamp > 0 ? Date(timeIntervalSince1970: stamp) : nil
+    }
+
+    /// Clears every copy of downloadable game metadata Playdock caches itself (`GameInfoCacheReset`)
+    /// and then re-scans the library, so every card and detail view re-fetches art/description/
+    /// details straight from Steam. For when a game is showing the wrong art, stale art, or none.
+    func hardRefreshGameInfo() {
+        guard !isHardRefreshingGameInfo else { return }
+        isHardRefreshingGameInfo = true
+        Task {
+            await GameInfoCacheReset.run()
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastHardRefreshKey)
+            isHardRefreshingGameInfo = false
+            gameInfoGeneration += 1
+            refreshSteamGames()
+            refreshSteamProfile()
+        }
+    }
+
     /// Settings that actually apply to a given library item - its own override if it has one,
     /// otherwise the shared default. Advanced Mode is the only place a user can create an override.
     /// Keyed by plain `id` so the exact same storage/lookup works for both Steam games (appID) and
