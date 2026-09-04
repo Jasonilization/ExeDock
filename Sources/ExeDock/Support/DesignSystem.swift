@@ -95,7 +95,11 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
     var accent: Color {
         switch self {
         case .luxury: return Color(red: 0.69, green: 0.55, blue: 0.34)
-        case .brutalist: return Color(red: 1.0, green: 0.30, blue: 0.42)
+        // Was #ff4d6d - a shrill cotton-candy pink that vibrated against both the cream and the
+        // near-black Brutalist grounds, and clashed head-on with the old #3a86ff search bar.
+        // Brutalism on the web is ink + paper + one loud signal color: a controlled vermilion red
+        // (#da2e22), a touch brighter in dark mode (#f2483b) so it doesn't sink into the charcoal.
+        case .brutalist: return Self.dynamicAccent(light: (0.855, 0.180, 0.133), dark: (0.949, 0.282, 0.231))
         // --accent:#00f0ff (dark) / #0092a3 (light) - a bright neon cyan reads fine glowing in
         // the dark but washes out on white, so the real light-mode CSS commits to a deeper teal.
         case .cyber: return Self.dynamicAccent(light: (0.0, 0.573, 0.639), dark: (0.0, 0.94, 1.0))
@@ -112,7 +116,11 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
     /// their own just repeat `accent`, so every call site can use this unconditionally.
     var accent2: Color {
         switch self {
-        case .brutalist: return Color(red: 0.227, green: 0.525, blue: 1.0) // #3a86ff - no light-mode override exists for Brutalist at all
+        // Brutalist's old second color was #3a86ff electric blue - only ever used for the Grid
+        // WebView's full-bleed search bar (skins.css), and the single worst offender in "the
+        // colour scheme looks very bad": a hot-blue slab next to a hot-pink accent on cream. Gone
+        // now - Brutalist collapses to its single red accent here, and the CSS search bar is an
+        // ink block instead (see .brut in skins.css).
         case .cyber: return Self.dynamicAccent(light: (0.761, 0.090, 0.439), dark: (1.0, 0.18, 0.53)) // #ff2e88 / #c21770
         case .pixel: return Self.dynamicAccent(light: (0.851, 0.314, 0.184), dark: (0.937, 0.490, 0.341)) // #ef7d57 / #d9502f
         default: return accent
@@ -128,7 +136,7 @@ enum PlaydockSkin: String, CaseIterable, Identifiable {
     var topBarBackground: Color {
         switch self {
         case .luxury: return Self.dynamicAccent(light: (0.965, 0.961, 0.953), dark: (0.082, 0.078, 0.071)) // #f6f5f3 / #151412
-        case .brutalist: return Self.dynamicAccent(light: (0.996, 0.965, 0.894), dark: (0.090, 0.078, 0.063)) // #fef6e4 / #171410
+        case .brutalist: return Self.dynamicAccent(light: (0.996, 0.965, 0.894), dark: (0.106, 0.090, 0.071)) // #fef6e4 / #1b1712 - dark ground lifted off near-black so cards/text stop looking crushed
         case .cyber: return Self.dynamicAccent(light: (0.933, 0.961, 0.969), dark: (0.020, 0.027, 0.039)) // #eef5f7 / #05070a
         case .soft: return Self.dynamicAccent(light: (0.902, 0.906, 0.933), dark: (0.169, 0.176, 0.227)) // #e6e7ee / #2b2d3a
         case .pixel: return Self.dynamicAccent(light: (0.780, 0.839, 0.937), dark: (0.161, 0.212, 0.435)) // #c7d6ef / #29366f (--panel)
@@ -269,12 +277,26 @@ struct PlaydockCardShape: InsettableShape {
     }
 }
 
+/// A color that resolves light/dark itself, live - a file-scope twin of `PlaydockSkin.dynamicAccent`
+/// for the handful of skin tokens defined outside the enum (the hard-shadow ink below).
+private func dynamicColor(light: (r: Double, g: Double, b: Double), dark: (r: Double, g: Double, b: Double)) -> Color {
+    Color(nsColor: NSColor(name: nil) { appearance in
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let c = isDark ? dark : light
+        return NSColor(red: c.r, green: c.g, blue: c.b, alpha: 1)
+    })
+}
+
 /// Skins whose real mockup card gets a hard, unblurred offset "twin shape" shadow instead of a soft
 /// `.shadow()` glow - Neobrutalist's `box-shadow: 8px 8px 0` and Pixel Arcade's `box-shadow: 6px 6px
 /// 0` are the same real technique, just different ink colors.
 private func hardShadowColor(for skin: PlaydockSkin) -> Color? {
     switch skin {
-    case .brutalist: return .primary
+    // Was `.primary` - fine as near-black on Brutalist's cream, but in dark mode `.primary` is
+    // near-*white*, so every card and button sat on a hard-edged white slab: a wall of glare that
+    // was a big part of "the colour scheme looks very bad." A shadow should read as a shadow in
+    // both modes - near-black ink on paper, a warm charcoal (#4b4237) on the dark ground.
+    case .brutalist: return dynamicColor(light: (0.078, 0.078, 0.078), dark: (0.294, 0.259, 0.216))
     case .pixel: return Color(red: 0.063, green: 0.071, blue: 0.11) // #10121c, the mockup's own ink
     default: return nil
     }
@@ -530,13 +552,14 @@ func playdockButtonLook(skin: PlaydockSkin, prominent: Bool, isPressed: Bool, ac
         // tactile object rather than a plain color chip.
         return PlaydockButtonLook(fill: AnyShapeStyle(Color.primary), labelColor: Color(nsColor: .windowBackgroundColor), cornerRadius: 9, neumorphic: true)
     case .brutalist:
-        // .brut .cta{border:3px solid var(--line);background:#111;color:#fff;} - fixed ink fill
-        // regardless of light/dark (the mockup never overrides it), theme-aware border. The real
-        // CSS gives the button itself no shadow, but Brutalist's own *card* already pops off the
-        // page with a hard offset twin (hardShadowColor) - carrying that same real technique onto
-        // the button (not Soft's soft blur, which would contradict Brutalist's flat-ink identity)
-        // gives it the same kind of raised, tactile presence in its own idiom.
-        return PlaydockButtonLook(fill: AnyShapeStyle(Color(red: 0.067, green: 0.067, blue: 0.067)), labelColor: .white, borderColor: .primary, borderWidth: skin.borderWidth, cornerRadius: 0, hardOffsetColor: hardShadowColor(for: .brutalist), pressOffsetX: 2, pressOffsetY: 2, scalesOnPress: false)
+        // .brut .cta was a fixed `#111` ink fill regardless of mode - on Brutalist's own dark
+        // ground (`#1b1712`) that's a near-invisible fill, so the button read as just a hollow
+        // white outline: half of "the colour scheme looks very bad." Inverted to a theme-aware
+        // solid the way Luxury's real `.cta` already is - a near-black block with cream text on
+        // paper, a cream block with dark text on the dark ground - keeping every other Brutalist
+        // button trait (hard 3px border, sharp corners, hard offset twin, diagonal press, no
+        // scale). skins.css's `.brut .cta` is updated to the same `var(--fg)`/`var(--bg)` pair.
+        return PlaydockButtonLook(fill: AnyShapeStyle(Color.primary), labelColor: Color(nsColor: .windowBackgroundColor), borderColor: .primary, borderWidth: skin.borderWidth, cornerRadius: 0, hardOffsetColor: hardShadowColor(for: .brutalist), pressOffsetX: 2, pressOffsetY: 2, scalesOnPress: false)
     case .cyber:
         // .cyber .cta{border:1px solid var(--accent);background:transparent;color:var(--accent);}
         // .cyber .cta:active{background:var(--accent);color:#00131a;} - inverts solid on press.
